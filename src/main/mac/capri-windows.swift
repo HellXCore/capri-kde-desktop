@@ -74,6 +74,13 @@ func near(_ a: CGRect, _ b: CGRect, _ slack: CGFloat = 2) -> Bool {
 
 func int(_ v: CGFloat) -> Int { Int(v.rounded()) }
 
+// The lock screen is up (or the login window of a switched-out session): window animations stall
+// meanwhile and closed windows can linger in the list, so the snapshot says so and Capri ignores it.
+func screenLocked() -> Bool {
+  guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+  return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
+}
+
 func snapshot() -> String {
   let screens = displays()
   let front = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
@@ -105,7 +112,7 @@ func snapshot() -> String {
     "{\"id\":\($0.id),\"x\":\(int($0.frame.minX)),\"y\":\(int($0.frame.minY)),\"w\":\(int($0.frame.width)),\"h\":\(int($0.frame.height)),\"scale\":\($0.scale)}"
   }
   let fgJson = fg.map { String($0) } ?? "null"
-  return "{\"v\":1,\"fg\":\(fgJson),\"displays\":[\(ds.joined(separator: ","))],\"wins\":[\(wins.joined(separator: ","))]}"
+  return "{\"v\":1,\"locked\":\(screenLocked()),\"fg\":\(fgJson),\"displays\":[\(ds.joined(separator: ","))],\"wins\":[\(wins.joined(separator: ","))]}"
 }
 
 // MARK: probe: what this process may see, without asking for anything

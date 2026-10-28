@@ -3,7 +3,8 @@
 // Feeds the overlay with the position of the other windows, so Capri can sit on them. On Windows a
 // small PowerShell helper does the Win32 calls; on Linux X11 linux/x11-watch.js reads the window
 // manager (EWMH) through xprop/xwininfo. Either gives physical pixels, which we turn into the
-// overlay's coordinates. The Windows helper also says when the window in front is another AI (ChatGPT,
+// overlay's coordinates. On macOS mac/window-watch.js runs a small Swift helper whose points already
+// are Electron's screen coordinates. The Windows helper also says when the window in front is another AI (ChatGPT,
 // Gemini…: `ai`, the names it matched), for her jealousy, and never passes on a title; which game
 // is in front, if one (`game`, its folder in Steam's library or another launcher's); and the USB
 // sticks plugged in (`usb`, drive letters), and the last device plugged in or out (`plug`).
@@ -64,15 +65,75 @@ function startLinuxWatch({ overlay, onUpdate, onState, session }) {
   return { stop: watch.stop, refresh: feed.send };
 }
 
+// macOS: the Swift helper (mac/window-watch.js), paused while the Mac sleeps or its screen is locked
+// (its snapshots are not to be trusted then), and started afresh when it wakes, is unlocked or its
+// screens change: also how a helper that gave up gets another chance, on a system event only.
+// `power`/`screens`: Electron's powerMonitor and screen (event emitters), `later`: for the tests.
+const SETTLE = { resume: 1500, 'unlock-screen': 1000, screens: 1000 }; // ms before a fresh helper
+
+function startMacWatch({
+  overlay, onUpdate, onState, power, screens, later = { set: setTimeout, clear: clearTimeout },
+  start = require(path.join(__dirname, 'mac', 'window-watch.js')).startMacWindowWatch,
+}) {
+  let state = null;
+  const watch = start({
+    overlay, onUpdate,
+    onState: (ok) => {
+      if (ok !== state) console.log(`[capri] window tracking: ${ok ? 'on' : 'off'} (macOS helper)`);
+      state = ok;
+      onState(ok);
+    },
+  });
+  if (!watch.available) return { stop() {}, refresh() {} };
+
+  let pending = null;
+  const soon = (ms) => {
+    later.clear(pending);
+    pending = later.set(() => {
+      pending = null;
+      watch.resume();
+    }, ms);
+  };
+  const pause = () => {
+    later.clear(pending);
+    pending = null;
+    watch.pause();
+  };
+  const on = {
+    power: { suspend: pause, 'lock-screen': pause, resume: () => soon(SETTLE.resume), 'unlock-screen': () => soon(SETTLE['unlock-screen']) },
+    // a screen plugged in, unplugged or changed: the helper's view of the screens (visible areas,
+    // scale) is read again by a fresh one
+    screens: Object.fromEntries(['display-added', 'display-removed', 'display-metrics-changed'].map((e) => [e, () => soon(SETTLE.screens)])),
+  };
+  for (const [event, fn] of Object.entries(on.power)) power?.on(event, fn);
+  for (const [event, fn] of Object.entries(on.screens)) screens?.on(event, fn);
+
+  return {
+    stop() {
+      later.clear(pending);
+      pending = null;
+      for (const [event, fn] of Object.entries(on.power)) power?.removeListener(event, fn);
+      for (const [event, fn] of Object.entries(on.screens)) screens?.removeListener(event, fn);
+      watch.stop();
+    },
+    refresh: watch.refresh,
+  };
+}
+
 // onState(ok): the watcher runs (true), or gave up after its restarts (false): capabilities.js
 // session (Linux): 'x11' | 'xwayland' | 'wayland' | null, from capabilities.js
 function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = null }) {
   if (process.platform === 'linux') return startLinuxWatch({ overlay, onUpdate, onState, session });
+  if (process.platform === 'darwin') {
+    const { powerMonitor } = require('electron');
+    return startMacWatch({ overlay, onUpdate, onState, power: powerMonitor, screens: screen });
+  }
   if (process.platform !== 'win32') return { stop() {}, refresh() {} };
 
   let child = null;
   let stopped = false;
   let restarts = 0;
+  let retry = null; // the pending restart, cancelled by stop()
 
   const handle = overlay.getNativeWindowHandle();
   const self = handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0));
@@ -83,6 +144,8 @@ function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = nul
   });
 
   const start = () => {
+    retry = null;
+    if (stopped) return;
     child = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-File', SCRIPT, String(self), String(process.pid),
@@ -103,7 +166,7 @@ function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = nul
     child.on('close', () => {
       child = null;
       if (stopped) return;
-      if (restarts++ < 3) setTimeout(start, 3000);
+      if (restarts++ < 3) retry = setTimeout(start, 3000);
       else onState(false);
     });
   };
@@ -112,6 +175,8 @@ function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = nul
   return {
     stop() {
       stopped = true;
+      clearTimeout(retry);
+      retry = null;
       child?.kill();
     },
     // her window moved (another screen, the taskbar in it or not): the same windows, from there
@@ -119,4 +184,4 @@ function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = nul
   };
 }
 
-module.exports = { startWindowWatch, createFeed, SCRIPT };
+module.exports = { startWindowWatch, startMacWatch, createFeed, SCRIPT };

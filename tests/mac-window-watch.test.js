@@ -24,7 +24,10 @@ test('mac helper line: windows and displays parsed, unknown fields dropped', () 
     wins: [{ id: 42, x: -250, y: 300, w: 700, h: 400, max: false, full: false },
       { id: 7, x: 0, y: 0, w: 2560, h: 1440, max: true, full: true }],
     displays: [{ id: 2, x: 0, y: 0, w: 2560, h: 1440, scale: 2 }, { id: 3, x: -1920, y: -200, w: 1920, h: 1080, scale: 1 }],
+    locked: false,
   });
+  assert.equal(parseLine(line({ locked: true })).locked, true);
+  assert.equal(parseLine(line({ locked: 'yes' })).locked, false);
 });
 
 test('mac helper line: garbage is rejected or filtered', () => {
@@ -217,4 +220,193 @@ test('mac watch: a helper that cannot be executed (no exit event) is still retri
   assert.equal(children.length, 4);
   assert.deepEqual(states, [false]);
   assert.ok(logs.some((l) => /EACCES/.test(l)));
+});
+
+test('mac watch: giving up sends an empty update, so she does not stay perched on a stale window', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const calls = [];
+  const updates = [];
+  const states = [];
+  startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u), onState: (ok) => states.push(ok),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  calls[0].child.stdout.write(`${line({ fg: 5, wins: [{ id: 5, x: 10, y: 20, w: 300, h: 200 }] })}\n`);
+  await new Promise(setImmediate);
+  assert.equal(updates.at(-1).wins.length, 1);
+  for (let i = 0; i < 4; i++) {
+    calls.at(-1).child.emit('close', 1);
+    t.mock.timers.tick(3000);
+  }
+  assert.deepEqual(states, [true, false]);
+  assert.deepEqual(updates.at(-1), { fg: null, taskbar: false, ai: [], game: null, usb: [], plug: null, wins: [] });
+});
+
+test('mac watch: pause() stops the helper without counting a failure; resume() starts a fresh one', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const calls = [];
+  const states = [];
+  const updates = [];
+  const watch = startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u), onState: (ok) => states.push(ok),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  calls[0].child.stdout.write(`${line({ fg: 1 })}\n`);
+  await new Promise(setImmediate);
+  assert.deepEqual(states, [true]);
+
+  watch.pause(); // locked or asleep
+  assert.equal(calls[0].child.killed, true);
+  calls[0].child.emit('close', null);
+  calls[0].child.stdout.write(`${line({ fg: 2 })}\n`); // late output of the old helper: ignored
+  await new Promise(setImmediate);
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 1); // no restart while paused
+  assert.equal(updates.length, 1);
+  assert.deepEqual(states, [true]); // still on: the last snapshot holds
+
+  watch.resume();
+  assert.equal(calls.length, 2);
+  calls[1].child.stdout.write(`${line({ fg: 3 })}\n`);
+  await new Promise(setImmediate);
+  assert.equal(updates.at(-1).fg, 3);
+
+  // a resume while one runs replaces it, and the replaced one's end is not a failure
+  watch.resume();
+  assert.equal(calls.length, 3);
+  assert.equal(calls[1].child.killed, true);
+  calls[1].child.emit('close', null);
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 3);
+
+  // a helper that gave up gets one more chance on resume (a system event), with its restarts back
+  for (let i = 0; i < 4; i++) {
+    calls.at(-1).child.emit('close', 1);
+    t.mock.timers.tick(3000);
+  }
+  assert.equal(states.at(-1), false);
+  const before = calls.length;
+  t.mock.timers.tick(60000);
+  assert.equal(calls.length, before); // no loop of its own
+  watch.resume();
+  assert.equal(calls.length, before + 1);
+  calls.at(-1).child.stdout.write(`${line({})}\n`);
+  await new Promise(setImmediate);
+  assert.equal(states.at(-1), true);
+
+  watch.stop();
+  watch.resume(); // stopped for good
+  assert.equal(calls.length, before + 1);
+});
+
+test('windows.js on macOS: paused on sleep and lock, fresh helper after wake, unlock and screen changes', () => {
+  const { startMacWatch } = loadWindowsOnMac();
+  const power = new EventEmitter();
+  const screens = new EventEmitter();
+  const timers = new Map();
+  let next = 1;
+  const later = { set: (fn) => { timers.set(next, fn); return next++; }, clear: (id) => timers.delete(id) };
+  const log = [];
+  const fakeWatch = { available: true, pause: () => log.push('pause'), resume: () => log.push('resume'), stop: () => log.push('stop'), refresh: () => log.push('refresh') };
+  const states = [];
+  const watch = startMacWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok), power, screens, later,
+    start: ({ onState }) => { onState(true); return fakeWatch; } });
+  assert.deepEqual(states, [true]);
+
+  power.emit('lock-screen');
+  assert.deepEqual(log, ['pause']);
+  power.emit('unlock-screen');
+  assert.equal(timers.size, 1);
+  power.emit('suspend'); // asleep before the unlock settled: the fresh start is called off
+  assert.equal(timers.size, 0);
+  power.emit('resume');
+  screens.emit('display-metrics-changed');
+  screens.emit('display-added'); // several events in a row: one fresh helper
+  assert.equal(timers.size, 1);
+  const [[id, fire]] = timers;
+  timers.delete(id);
+  fire();
+  assert.deepEqual(log, ['pause', 'pause', 'resume']);
+  watch.refresh();
+  assert.equal(log.at(-1), 'refresh');
+
+  screens.emit('display-removed');
+  watch.stop();
+  assert.equal(timers.size, 0);
+  assert.equal(log.at(-1), 'stop');
+  for (const e of ['lock-screen', 'unlock-screen', 'suspend', 'resume']) assert.equal(power.listenerCount(e), 0, e);
+  for (const e of ['display-added', 'display-removed', 'display-metrics-changed']) assert.equal(screens.listenerCount(e), 0, e);
+});
+
+test('windows.js on macOS: no helper, no listeners, tracking off', () => {
+  const { startMacWatch } = loadWindowsOnMac();
+  const power = new EventEmitter();
+  const screens = new EventEmitter();
+  const states = [];
+  const watch = startMacWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok), power, screens,
+    start: ({ onState }) => { onState(false); return { available: false, stop() {}, refresh() {}, pause() {}, resume() {} }; } });
+  assert.deepEqual(states, [false]);
+  assert.equal(power.listenerCount('resume') + screens.listenerCount('display-added'), 0);
+  watch.refresh();
+  watch.stop();
+});
+
+test('windows.js on macOS: startWindowWatch runs the real adapter, a missing helper keeps the base overlay', () => {
+  const { windows, spawned } = loadWindowsOnMac({ helperMissing: true });
+  const states = [];
+  const watch = windows.startWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok) });
+  assert.deepEqual(states, [false]);
+  assert.equal(spawned.length, 0);
+  watch.refresh();
+  watch.stop();
+});
+
+// windows.js as on a Mac, with Electron's screen and powerMonitor stood in for
+function loadWindowsOnMac({ helperMissing = false } = {}) {
+  const vm = require('node:vm');
+  const module = { exports: {} };
+  const filename = path.resolve(__dirname, '../src/main/windows.js');
+  const spawned = [];
+  const electron = { screen: new EventEmitter(), powerMonitor: new EventEmitter() };
+  const quiet = { log() {}, error() {} };
+  const context = {
+    module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout, clearTimeout,
+    process: { platform: 'darwin', env: {}, pid: 1 },
+    require(id) {
+      if (id === 'electron') return electron;
+      if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); throw new Error('spawned'); } };
+      if (id.endsWith(path.join('mac', 'window-watch.js')) && helperMissing) {
+        const real = require(id);
+        return { ...real, startMacWindowWatch: (o) => real.startMacWindowWatch({ ...o, helper: '/nonexistent/capri-windows', log() {} }) };
+      }
+      return require(id);
+    },
+  };
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), context, { filename });
+  return { windows: module.exports, startMacWatch: module.exports.startMacWatch, spawned };
+}
+
+test('mac helper path: bin/ next to the adapter from the repository, Resources/bin once packaged', () => {
+  const { helperPath } = require('../src/main/mac/window-watch');
+  const repo = path.join('/src', 'capri', 'src', 'main', 'mac');
+  assert.equal(helperPath(repo, '/whatever'), path.join(repo, 'bin', 'capri-windows'));
+  const res = path.join('/Applications', 'Capri.app', 'Contents', 'Resources');
+  assert.equal(helperPath(path.join(res, 'app.asar', 'src', 'main', 'mac'), res), path.join(res, 'bin', 'capri-windows'));
+  assert.equal(helperPath(path.join(res, 'app.asar.unpacked', 'src', 'main', 'mac'), res), path.join(res, 'bin', 'capri-windows'));
+});
+
+test('mac watch: snapshots behind the lock screen are ignored, the last good one holds', async () => {
+  const calls = [];
+  const updates = [];
+  const states = [];
+  const watch = startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u), onState: (ok) => states.push(ok),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  const out = calls[0].child.stdout;
+  out.write(`${line({ locked: true, wins: [{ id: 9, x: 0, y: 0, w: 300, h: 200 }] })}\n`);
+  await new Promise(setImmediate);
+  assert.deepEqual(states, [true]); // the helper runs
+  assert.equal(updates.length, 0); // but nothing stale goes out
+  out.write(`${line({ fg: 5, wins: [{ id: 5, x: 10, y: 20, w: 300, h: 200 }] })}\n`);
+  out.write(`${line({ locked: true, fg: null, wins: [] })}\n`);
+  await new Promise(setImmediate);
+  assert.equal(updates.length, 1);
+  watch.refresh();
+  assert.equal(updates.at(-1).fg, 5);
+  watch.stop();
 });

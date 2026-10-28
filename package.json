@@ -7,8 +7,11 @@
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
+    "prestart": "node scripts/build-mac-helper.js",
     "start": "electron .",
+    "predev": "node scripts/build-mac-helper.js",
     "dev": "electron . --dev",
+    "build:mac-helper": "node scripts/build-mac-helper.js --required",
     "demo": "node scripts/demo.js",
     "hooks:install": "node scripts/install-hooks.js",
     "hooks:uninstall": "node scripts/install-hooks.js --uninstall",
@@ -53,12 +56,17 @@
       "hooks/**",
       "scripts/**",
       "package.json",
-      "LICENSE"
+      "LICENSE",
+      "!src/main/mac/*.swift",
+      "!src/main/mac/bin/**",
+      "!scripts/before-pack.js",
+      "!scripts/build-mac-helper.js"
     ],
     "asarUnpack": [
       "hooks/**",
       "src/main/windows.ps1"
     ],
+    "beforePack": "scripts/before-pack.js",
     "win": {
       "target": "nsis",
       "icon": "assets/icons/capri.ico"
@@ -89,6 +97,12 @@
       ],
       "category": "public.app-category.entertainment",
       "icon": "assets/icons/capri-mac.png",
+      "extraResources": [
+        {
+          "from": "src/main/mac/bin/capri-windows",
+          "to": "bin/capri-windows"
+        }
+      ],
       "hardenedRuntime": true,
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "Capri captures your screen only when you request screen analysis or a screenshot."

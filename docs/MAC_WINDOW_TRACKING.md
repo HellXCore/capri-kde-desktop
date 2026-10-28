@@ -1,8 +1,8 @@
-# macOS: отслеживание окон (CAPRI-08)
+# macOS: отслеживание окон (CAPRI-08, CAPRI-09)
 
 Дата: 2026-10-28. Проверено на Apple M4, macOS 26 (Darwin 25.6), один внешний монитор 2560×1440 @1x, Electron из `node_modules` проекта.
 
-Это изолированный прототип. В `main.js` и `windows.js` он не подключён, это работа CAPRI-09.
+Прототип CAPRI-08 подключён в CAPRI-09: `startWindowWatch()` в `src/main/windows.js` на macOS запускает адаптер, helper собирается перед упаковкой и лежит в `Capri.app/Contents/Resources/bin/`. Подробности интеграции в разделе «Интеграция (CAPRI-09)».
 
 ## Итог
 
@@ -15,7 +15,9 @@
 | Файл | Назначение |
 |---|---|
 | `src/main/mac/capri-windows.swift` | helper: печатает JSON-строку при каждом изменении |
-| `src/main/mac/window-watch.js` | адаптер: `startMacWindowWatch({ overlay, onUpdate, onState })` с тем же контрактом, что `startWindowWatch()` (`onState(true)` на первом снимке helper, `onState(false)`, если helper нет или он упал больше трёх раз подряд), плюс чистые `parseLine()` и `toUpdate()` |
+| `src/main/mac/window-watch.js` | адаптер: `startMacWindowWatch({ overlay, onUpdate, onState })` с тем же контрактом, что `startWindowWatch()` (`onState(true)` на первом снимке helper, `onState(false)`, если helper нет или он упал больше трёх раз подряд), `pause()`/`resume()` для сна и блокировки, плюс чистые `parseLine()`, `toUpdate()` и `helperPath()` |
+| `scripts/build-mac-helper.js` | сборка helper в `src/main/mac/bin/` (`npm run build:mac-helper`; `npm run dev`/`npm start` собирают его сами, без swiftc просто пишут, что окна не отслеживаются) |
+| `scripts/before-pack.js` | `beforePack` electron-builder: перед macOS-пакетом собирает helper под arch пакета, без swiftc упаковка падает |
 | `tests/mac-window-watch.test.js` | тесты парсинга, нормализации, фильтра overlay, отказа helper (нет файла, нет прав на запуск), `onState`, ограничения перезапусков, `stop()` во время ожидания перезапуска и склейки строки JSON из нескольких чанков stdout (`npm test`, на любой ОС) |
 | `scripts/mac-window-scenario.js` | реальный сценарий на Mac: свои тестовые окна, перемещение, сворачивание, закрытие, полный экран |
 | `tools/mac-window-fixture.swift` | тестовые окна для сценария, управляются через stdin |
@@ -115,12 +117,13 @@ npx electron scripts/mac-window-probe.js 10   # внутри Electron: дисп�
 
 Минимальная система: macOS 12 (`minos 12.0`, как у Electron), только arm64. Линкуются только системные фреймворки и Swift runtime из ОС.
 
-Для CAPRI-09 (сейчас не сделано):
+Упаковка (CAPRI-09):
 
-- Собирать helper на macOS-раннере CI перед `electron-builder --mac`, а не хранить бинарник в git.
-- Класть его в `src/main/mac/bin/` и добавить `src/main/mac/bin/**` в `asarUnpack`. Адаптер уже заменяет путь `app.asar` на `app.asar.unpacked`, как это делает `windows.js`.
-- electron-builder подписывает исполняемые файлы внутри бандла с hardened runtime. Entitlements helper не нужны. Проверить подпись (`codesign -dv`) и нотаризацию на упакованном `.app`.
-- Пока helper не собран, адаптер возвращает `{ available:false }` и вызывает `onState(false)`, а `onUpdate` не вызывается: базовый overlay работает как раньше. Локальная сборка без helper не ломается. Учесть, что `files: src/**` возьмёт в пакет и `.swift`-исходник, и локально собранный бинарник (внутрь asar, где он не исполняется).
+- `npm run dist:mac` (и любой `electron-builder --mac`): `beforePack` (`scripts/before-pack.js`) собирает helper под arch пакета (arm64 или x64) в `src/main/mac/bin/`, если его нет или он старше исходника. Без swiftc упаковка для macOS падает, а не выпускает Capri без окон.
+- В пакет helper попадает через `build.mac.extraResources` в `Capri.app/Contents/Resources/bin/capri-windows`, вне asar. `build.files` исключает `src/main/mac/bin/**` и `*.swift`, поэтому ни исходник, ни бинарник не попадают в asar, а Windows- и Linux-пакеты helper не содержат (проверено `--linux dir`). В упакованном приложении адаптер берёт путь из `process.resourcesPath` (`helperPath()`).
+- CI (`.github/workflows/build.yml`, macos-15): отдельный шаг `npm run build:mac-helper`, затем после упаковки `test -x …/Resources/bin/capri-windows` и `smoke-test.js --expect-window-tracking` (smoke требует строку `[capri] window tracking: on`).
+- Подпись: hardened runtime и настройки подписи не менялись. В локальной сборке без identity (`CSC_IDENTITY_AUTO_DISCOVERY=false`) helper остаётся с ad-hoc подписью линкера (`codesign -dv`: `adhoc,linker-signed`) и запускается. С настоящим identity electron-builder подписывает и Mach-O в `Resources`; entitlements helper не нужны. Подпись Developer ID и нотаризация **не проверялись** (секретов нет).
+- Без helper (сборка из репозитория без swiftc) адаптер возвращает `{ available:false }` и вызывает `onState(false)`: базовый overlay работает как раньше.
 
 ## Что проверено
 
@@ -137,6 +140,23 @@ npx electron scripts/mac-window-probe.js 10   # внутри Electron: дисп�
 - Дисплей левее или выше главного (отрицательные координаты целого экрана): только тест на числах.
 - Ручное переключение Spaces, Mission Control, Stage Manager.
 - Перетаскивание окна мышью: проверено программным `setFrame`. Частота обновлений при непрерывном перетаскивании ограничена опросом 150 мс.
-- Упакованное приложение, подпись и нотаризация helper: это CAPRI-09.
+- Подпись Developer ID и нотаризация helper.
 - Смена конфигурации экранов на лету (подключение/отключение монитора, смена разрешения). Helper крутит `RunLoop.main.run()`, а не `NSApplication.run()`; рамки окон и `CGDisplayBounds` идут из CoreGraphics и всегда свежие, но `NSScreen.screens` (видимая область для `max`, `scale`) и уведомление `didChangeScreenParametersNotification` могут без цикла событий AppKit не обновиться. Проверить в CAPRI-09; при проблеме перейти на `NSApplication.run()` или брать данные дисплеев из CoreGraphics.
-- Работа с настоящим персонажем (renderer): это CAPRI-09.
+
+## Интеграция (CAPRI-09)
+
+- `startWindowWatch()` (`src/main/windows.js`) на `darwin` вызывает `startMacWatch()`: адаптер `mac/window-watch.js` плюс подписки на `powerMonitor` и `screen`. Windows- и Linux-ветки не менялись, кроме отмены отложенного перезапуска PowerShell в `stop()` (как в mac-адаптере).
+- `windowTracking` (CAPRI-02) на macOS по умолчанию выключен и включается только по `onState(true)`, то есть после первого снимка helper. Меню «Вселяться в мои окна», демо и сидение renderer идут от него.
+- Отказ: helper не найден → `onState(false)` сразу, без попыток запуска. Helper падает → 3 перезапуска через 3 с (счётчик сбрасывается, если он проработал больше минуты), затем `onState(false)` и пустой update (`wins: []`), чтобы она не осталась сидеть на окне, которое больше не отслеживается. Своего цикла перезапусков после отказа нет.
+- Сон и блокировка: `suspend`/`lock-screen` → `pause()` (helper остановлен, последний снимок сохраняется, это не считается падением). `resume` (через 1.5 с) и `unlock-screen` (через 1 с) → `resume()`: свежий helper с восстановленным счётчиком перезапусков. Так отказавший helper получает ещё одну попытку, но только по системному событию.
+- Блокировка без события (например, Capri запущена уже на экране блокировки): helper пишет `locked` из `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`, публичный API, без разрешений), адаптер такие снимки не передаёт и держит последний нормальный.
+- Смена экранов: `display-added`/`display-removed`/`display-metrics-changed` → через 1 с (события склеиваются) свежий helper, чтобы `NSScreen` (видимая область для `max`, `scale`) был прочитан заново. Это обходит вопрос из «Что не проверено» про `RunLoop.main.run()` без проверки на реальном мониторе. `main.js` по-прежнему вызывает `refresh()` при смене экрана и переносе overlay.
+- Демо-окно и тестовые окна `--dev` (`testwin`) на macOS открываются без `alwaysOnTop`: окно уровня floating helper не считает местом для сидения. `showInactive()` и так выводит их наверх.
+- Renderer (`app.js`, `capri.js`) не менялся: формат `wins` тот же, `fg: null` безопасен (`find()` ничего не находит).
+
+Проверено 2026-10-28 на том же Mac (M4, macOS 26, один экран 1x), с временным профилем (`--user-data-dir`) и отдельным `CAPRI_PORT`:
+
+- `npm run dev`: `window tracking: on`; персонаж садится на чужое окно (fixture-процесс из `tools/mac-window-fixture.swift`) и на `testwin`, едет вместе с окном при перемещении, падает на пол при сворачивании и закрытии, падает, когда окно перекрывает развёрнутое окно другого приложения.
+- Отказ helper в работающем приложении (4 раза `pkill`): 3 перезапуска, затем `window tracking: off`, персонаж слезает с окна, пункт «Вселяться в мои окна» помечен «недоступно», новых процессов helper нет.
+- `npm run dist:mac` (`CSC_IDENTITY_AUTO_DISCOVERY=false`): helper в `Contents/Resources/bin`, `--expect-window-tracking` smoke проходит и для `dist/mac-arm64/Capri.app`, и для приложения, распакованного из `Capri-…-mac-arm64.zip`. На распакованном приложении повторён сценарий сидения, перемещения, сворачивания и закрытия. Helper завершается вместе с приложением.
+- Сон, пробуждение, блокировка и смена мониторов в живом приложении **не вызывались** (нельзя без пользователя, а разблокировка требует пароля). Эти пути покрыты тестами `tests/mac-window-watch.test.js`.
