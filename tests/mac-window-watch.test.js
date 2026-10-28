@@ -334,6 +334,28 @@ test('windows.js on macOS: paused on sleep and lock, fresh helper after wake, un
   for (const e of ['display-added', 'display-removed', 'display-metrics-changed']) assert.equal(screens.listenerCount(e), 0, e);
 });
 
+test('windows.js on macOS: a screen event while asleep or locked does not bring the helper back', () => {
+  const { startMacWatch } = loadWindowsOnMac();
+  const power = new EventEmitter();
+  const screens = new EventEmitter();
+  const timers = new Map();
+  let next = 1;
+  const later = { set: (fn) => { timers.set(next, fn); return next++; }, clear: (id) => timers.delete(id) };
+  const log = [];
+  const fakeWatch = { available: true, pause: () => log.push('pause'), resume: () => log.push('resume'), stop() {}, refresh() {} };
+  const watch = startMacWatch({ overlay: fakeOverlay(), onUpdate() {}, onState() {}, power, screens, later, start: () => fakeWatch });
+  power.emit('lock-screen');
+  screens.emit('display-removed'); // an external screen going dark behind the lock screen
+  assert.equal(timers.size, 0);
+  power.emit('unlock-screen');
+  screens.emit('display-added');
+  assert.equal(timers.size, 1); // after the unlock, screen events count again
+  const [[, fire]] = timers;
+  fire();
+  assert.deepEqual(log, ['pause', 'resume']);
+  watch.stop();
+});
+
 test('windows.js on macOS: no helper, no listeners, tracking off', () => {
   const { startMacWatch } = loadWindowsOnMac();
   const power = new EventEmitter();
