@@ -205,3 +205,54 @@ test('controls: unsupported features disabled with the reason, a restart said ho
     if (r.control?.key) assert.notDeepEqual(checkPatch({ [r.control.key]: r.control.value }, ctx({ displays: [7] })).fields?.[r.control.key], 'unknown', r.id);
   }
 });
+
+test('patches: Object.prototype names are unknown keys, not a crash', () => {
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+    // what a window could send (JSON.parse makes __proto__ an own key, as IPC's structured clone does)
+    const input = JSON.parse(`{${JSON.stringify(key)}: "full"}`);
+    assert.deepEqual(checkPatch(input, ctx()), { ok: false, fields: { [key]: 'unknown' } });
+  }
+  assert.deepEqual(checkPatch({ motion: 'full', constructor: 'auto' }, ctx()).fields, { constructor: 'unknown' });
+  assert.deepEqual(checkPatch({ customUrl: 'javascript:alert(1)' }, ctx()).fields, { customUrl: 'url' });
+  assert.deepEqual(checkPatch({ customUrl: `https://a.b/${'x'.repeat(3000)}` }, ctx()).fields, { customUrl: 'url' });
+  assert.deepEqual(checkPatch({ scale: Infinity }, ctx()).fields, { scale: 'type' });
+});
+
+test('Windows: a config held open (rename refused) is still written, in place', () => {
+  freshProfile(JSON.stringify({ volume: 0.5 }));
+  const file = path.join(userData, 'config.json');
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const rename = fs.renameSync;
+  const busy = (code) => () => { throw Object.assign(new Error(code), { code }); };
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    fs.renameSync = busy('EPERM');
+    config.commit({ volume: 0.9 });
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).volume, 0.9);
+    assert.equal(config.load().volume, 0.9);
+    assert.equal(fs.existsSync(`${file}.tmp`), false);
+    // any other failure still throws, and changes nothing
+    fs.renameSync = busy('ENOSPC');
+    assert.throws(() => config.commit({ volume: 0.2 }), { code: 'ENOSPC' });
+    assert.equal(config.load().volume, 0.9);
+    // elsewhere a refused rename is a failure: no writing in place
+    Object.defineProperty(process, 'platform', platform);
+    fs.renameSync = busy('EPERM');
+    assert.throws(() => config.commit({ volume: 0.2 }), { code: 'EPERM' });
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).volume, 0.9);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    fs.renameSync = rename;
+  }
+});
+
+test('macOS app menu: Cmd+W / Cmd+M never reach the overlay; no default menu outside --dev elsewhere', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  const menu = src.slice(src.indexOf('function appMenu()'), src.indexOf('function main()'));
+  const dev = /\.\.\.\(DEV \? \[\{ label: 'Dev', submenu: \[\{ role: 'reload' \}, \{ role: 'toggleDevTools' \}\] \}\] : \[\]\)/;
+  assert.doesNotMatch(menu.replace(dev, ''), /role: '(close|minimize|reload|forceReload|toggleDevTools)'/);
+  assert.match(menu, /win !== overlay && win\.close\(\)/);
+  assert.match(menu, /win !== overlay && win\.minimize\(\)/);
+  assert.match(menu, dev);
+  assert.match(src, /else if \(!DEV\) Menu\.setApplicationMenu\(null\)/);
+});

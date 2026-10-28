@@ -384,7 +384,8 @@ function applySettings(input) {
     if (effects.watchScreen && !cfg.lookAsked) status = 'asks';
   }
   if (effects.assistantChanged) sendCommand('assistantChanged');
-  if ('provider' in patch) refreshModels().catch(() => {}); // its models, in the window and the menu once known
+  // its models (or the new address's), in the window and the menu once known
+  if ('provider' in patch || 'customUrl' in patch) refreshModels().catch(() => {});
   return { ok: true, status };
 }
 
@@ -879,7 +880,7 @@ function registerIpc() {
   ipcMain.on('settings:restart', (e) => {
     if (!settings?.owns(e.sender)) return;
     app.relaunch();
-    app.exit(0);
+    app.quit(); // not exit(): will-quit still stops her window watcher and frees her shortcuts
   });
   ipcMain.on('settings:ready', (e, info) => {
     if (!settings?.owns(e.sender)) return;
@@ -1142,6 +1143,12 @@ async function smokeSettings() {
     `new Promise((r) => setTimeout(() => r(document.activeElement?.id || null), 300))`);
   if (kept !== 'menu-general') throw new Error(`focus lost when the settings were drawn again (${kept})`);
   const changed = await smokeSettingsChange(win);
+  // a field's hint is read with it: its display mode always says when it's taken into account
+  const described = await win.webContents.executeJavaScript(`(() => {
+    const ids = (document.getElementById('field-render')?.getAttribute('aria-describedby') || '').split(' ').filter(Boolean);
+    return ids.length > 0 && ids.every((id) => document.getElementById(id)?.textContent);
+  })()`);
+  if (!described) throw new Error('settings hints not tied to their fields (aria-describedby)');
   // shown first (ready-to-show may come after the page said it's ready), then Escape, sent again
   // until it lands: on Xvfb or a CI desktop a key can go before the window really has the focus
   if (!win.isVisible()) await new Promise((resolve) => { win.once('show', resolve); setTimeout(resolve, 5000); });
@@ -1311,8 +1318,9 @@ function applyRender() {
 
 // macOS: the keyboard shortcuts of text fields (Cmd+C, V, X, A, Z) come from the app's menu, and
 // without one they do nothing in her settings window (pasting a key). A small one, then: the app
-// with Quit, Edit, Window. Reload and DevTools only in --dev. Windows and Linux need none (her
-// windows have no menu bar).
+// with Quit, Edit, Window. Reload and DevTools only in --dev. Windows and Linux need none (text
+// fields have their shortcuts without it), and Electron's default one is removed there outside --dev:
+// it would give her windows Ctrl+R (reload), Ctrl+Shift+I (DevTools) and Ctrl+W (close her overlay).
 function appMenu() {
   return Menu.buildFromTemplate([
     { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
@@ -1320,7 +1328,15 @@ function appMenu() {
       role: 'editMenu',
       submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }],
     },
-    { role: 'windowMenu', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+    // not the roles: Cmd+W / Cmd+M would close or minimize her overlay too, focused while you type
+    // in her chat, and with no Dock icon there'd be no getting her back
+    {
+      role: 'windowMenu',
+      submenu: [
+        { label: 'Minimize', accelerator: 'CmdOrCtrl+M', click: (_item, win) => win && win !== overlay && win.minimize() },
+        { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: (_item, win) => win && win !== overlay && win.close() },
+      ],
+    },
     ...(DEV ? [{ label: 'Dev', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }] }] : []),
   ]);
 }
@@ -1338,6 +1354,7 @@ function main() {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
     if (process.platform === 'darwin') app.dock?.hide();
     if (process.platform === 'darwin') Menu.setApplicationMenu(appMenu());
+    else if (!DEV) Menu.setApplicationMenu(null);
     serveProtocol();
     registerIpc();
     settings = createSettingsWindow({

@@ -58,8 +58,10 @@ function checkPatch(input, ctx) {
   if (!isObject(input)) return { ok: false, fields: { '': 'type' } };
   const keys = Object.keys(input);
   if (!keys.length || keys.length > 8) return { ok: false, fields: { '': 'range' } };
-  const values = {};
-  const fields = {};
+  // pairs, made objects at the end (Object.fromEntries): `fields[key] = ...` with key '__proto__'
+  // would set the prototype instead, and a patch of only that would pass as valid
+  const values = [];
+  const fields = [];
   const features = ctx.features || {};
   for (const key of keys) {
     const v = input[key];
@@ -68,7 +70,7 @@ function checkPatch(input, ctx) {
       if (typeof v !== 'boolean') error = 'type';
       else if (key === 'possess' && v && !features.windowTracking) error = 'unsupported';
       else if (key === 'autostart' && !features.autostart) error = 'unsupported';
-    } else if (key in CHOICES) {
+    } else if (Object.hasOwn(CHOICES, key)) { // not `in`: 'constructor', '__proto__' are refused as unknown
       if (!CHOICES[key].includes(v)) error = 'choice';
     } else if (key === 'lang') {
       if (v !== 'auto' && !(ctx.langs || []).includes(v)) error = 'choice';
@@ -91,10 +93,10 @@ function checkPatch(input, ctx) {
     } else {
       error = 'unknown';
     }
-    if (error) fields[key] = error;
-    else values[key] = typeof v === 'string' ? v.trim() : v;
+    if (error) fields.push([key, error]);
+    else values.push([key, typeof v === 'string' ? v.trim() : v]);
   }
-  return Object.keys(fields).length ? { ok: false, fields } : { ok: true, values };
+  return fields.length ? { ok: false, fields: Object.fromEntries(fields) } : { ok: true, values: Object.fromEntries(values) };
 }
 
 /**
