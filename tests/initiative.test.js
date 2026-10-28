@@ -245,3 +245,66 @@ test('pc: the battery running out comes whatever the level, the charger waits it
   await pc.battery({ level: 0.04, charging: false });
   assert.deepEqual(said, ['Critical 4.']);
 });
+
+// CAPRI-05 review: what the tests above left out
+
+test('initiative: a level changed at run time applies at once, its waits kept', async () => {
+  const { Initiative, COOLDOWNS } = await load();
+  const c = clock(1e6);
+  const ini = new Initiative({ level: 'normal', now: c.now });
+  ini.delay('idle'); // as app.js does at start
+  assert.equal(ini.allow('idle'), false); // normal: never
+  ini.level = 'active';
+  assert.equal(ini.allow('idle'), false); // not right as she comes online
+  c.add(COOLDOWNS.idle.active);
+  assert.equal(ini.offer('idle', () => true), true);
+  ini.level = 'quiet';
+  c.add(COOLDOWNS.idle.active);
+  assert.equal(ini.allow('idle'), false);
+  ini.level = 'loud'; // unknown: normal
+  assert.equal(ini.level, 'normal');
+  ini.level = undefined;
+  assert.equal(ini.level, 'normal');
+});
+
+test('initiative: a line the panel refused counts for nothing', async () => {
+  const { Initiative } = await load();
+  const ini = new Initiative({ level: 'normal', now: clock(1e6).now });
+  assert.equal(ini.offer('pc', () => false), false);
+  assert.equal(ini.allow('pc'), true);
+  assert.equal(ini.allow('ambient'), true); // nor did it start the gap
+  assert.equal(ini.offer('pc', () => undefined), true); // anything but false: shown
+  assert.equal(ini.allow('pc'), false);
+});
+
+test('brain: quiet still says an interruption, Claude waiting for you, a crash, a notification', async () => {
+  const { brain, said } = await brainAt('quiet');
+  await brain.handle({ hook_event_name: 'SessionStart', session_id: SESSION, cwd: '/tmp/demo', source: 'startup' });
+  await brain.handle({ hook_event_name: 'UserPromptSubmit', session_id: SESSION, prompt: 'go' });
+  await brain.handle({ hook_event_name: 'PostToolUseFailure', session_id: SESSION, tool_name: 'Bash', is_interrupt: true });
+  await brain.handle({ hook_event_name: 'Notification', session_id: SESSION, notification_type: 'idle_prompt' });
+  await brain.handle({ hook_event_name: 'Notification', session_id: SESSION, message: 'Something to read' });
+  await brain.handle({ hook_event_name: 'StopFailure', session_id: SESSION, error: 'rate limited' });
+  await brain.handle({ hook_event_name: 'Interrupt', session_id: SESSION });
+  assert.deepEqual(said.map((m) => m.kind), ['work', 'info', 'info', 'info', 'error', 'info']);
+  assert.equal(said[3].line, 'Something to read');
+});
+
+test('brain: her language changed at run time, her click lines follow it and still never repeat', async () => {
+  const { brain, said } = await brainAt('normal');
+  for (let i = 0; i < 4; i++) brain.status();
+  brain.lang = 'ru';
+  for (let i = 0; i < 6; i++) brain.status();
+  const ru = said.slice(4).map((m) => m.line);
+  const ruIdle = new Set(brain.t.idle.map((l) => l.replace('{name}', 'choom')));
+  const ruClose = new Set((brain.t.bond.idle[0] || []).map((l) => l.replace('{name}', 'choom')));
+  for (const l of ru) assert.ok(ruIdle.has(l) || ruClose.has(l), l);
+  const lines = said.map((m) => m.line);
+  for (let i = 1; i < lines.length; i++) assert.notEqual(lines[i], lines[i - 1]);
+});
+
+test('settings: the tray reads an unknown initiative as normal, like her settings window', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  assert.match(src, /\['quiet', 'active'\]\.includes\(cfg\.initiative\) \? cfg\.initiative : 'normal'/);
+});
