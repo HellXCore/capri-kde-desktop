@@ -8,7 +8,7 @@
 const WIDTH = 720;
 const HEIGHT = 540;
 // the ink of her panels (styles/tokens.css), so the window doesn't flash white while it loads
-const BACKGROUND = '#17111e';
+const BACKGROUND = '#fcee0a'; // settings.css page colour, so opening doesn't flash dark
 
 /**
  * @param {object} deps

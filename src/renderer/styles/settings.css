@@ -1,9 +1,39 @@
+/* Look adapted from cyberpunk-css by alddesign (https://github.com/alddesign/cyberpunk-css), MIT License, Copyright (c) 2025 alddesign: the razor edge masks and the button, heading and table-bar clip shapes are taken from it; the rest is ours. */
+
 /* ------------------------------------------------------------------
-   Her settings window: an ordinary window in the overlay's style.
-   Flat, hard-edged, chamfered corners, violet offset copies.
+   Her settings window, in the style of Cyberpunk 2077's menus (CAPRI-12):
+   yellow paper, black panels with cut corners, razor edges, cut buttons
+   with a cyan offset shadow, headings underlined with a bar, a short
+   glitch on the headings now and then (none with reduced motion).
 ------------------------------------------------------------------- */
 
 @import url('tokens.css');
+
+:root {
+  --cp-yellow: #fcee0a;
+  --cp-black: #000;
+  --cp-panel: #0d0d0d;
+  --cp-cyan: #00ffd2;
+  --cp-blue: #45aefb;
+  --cp-red: #ff003c;
+  --cp-red-ink: #a8001f; /* red text on yellow (6:1) */
+  --cp-red-light: #ff5c7a; /* red text on black (7:1) */
+  --cp-danger: #c8002c; /* white text on it (5.6:1) */
+  --cp-ink: #000;
+  --cp-ink-soft: #3a3600; /* small print on yellow (10:1) */
+  --cp-paper: #f4f4f4;
+
+  /* the shapes */
+  --cp-cut: 12px;
+  --cp-tile: polygon(0 0, calc(100% - var(--cp-cut)) 0, 100% var(--cp-cut), 100% 100%, var(--cp-cut) 100%, 0 calc(100% - var(--cp-cut)));
+  --cp-block: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+  --cp-razor-top: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1920px" height="40px"><path d="M1827.156,15.021 L1827.129,14.994 L1833.785,14.994 L1833.759,15.021 L1827.156,15.021 ZM1824.965,24.036 L1835.969,24.036 L1830.461,18.558 L1833.759,15.021 L1920.000,15.021 L1920.000,39.075 L0.001,39.075 L0.001,15.013 L271.884,15.013 L279.537,6.930 L292.458,6.930 L308.426,24.036 L308.449,24.013 L308.467,24.036 L317.638,15.021 L463.241,15.021 L466.539,18.558 L461.031,24.036 L472.035,24.036 L466.539,18.558 L469.844,15.021 L551.557,15.021 L556.251,10.578 L565.497,1.358 L571.663,7.066 L602.910,7.055 L607.919,7.055 L620.578,19.983 L654.209,19.983 L661.448,12.957 L735.709,12.995 L741.480,18.554 L750.129,9.930 L753.020,12.995 L918.181,12.957 L930.942,0.066 L954.993,24.036 L955.000,24.024 L955.012,24.036 L964.064,15.013 L967.906,15.013 L970.005,17.106 L966.670,20.419 L973.326,20.419 L970.005,17.106 L972.067,15.055 L1050.000,15.023 L1050.000,15.013 L1064.030,15.017 L1072.000,15.013 L1072.000,15.019 L1225.933,15.055 L1227.994,17.106 L1224.674,20.419 L1231.331,20.419 L1227.994,17.106 L1230.094,15.013 L1233.936,15.013 L1242.989,24.036 L1243.000,24.024 L1243.007,24.036 L1267.058,0.066 L1279.819,12.957 L1368.980,12.995 L1371.871,9.930 L1380.520,18.554 L1386.290,13.057 L1635.552,13.019 L1642.790,19.983 L1676.422,19.983 L1689.080,6.992 L1725.337,7.003 L1731.502,1.358 L1740.749,10.578 L1745.443,15.021 L1827.156,15.021 L1830.461,18.558 L1824.965,24.036 ZM341.624,18.857 L339.889,18.857 L339.889,24.036 L341.624,24.036 L341.624,18.857 ZM344.248,18.857 L342.518,18.857 L342.518,24.036 L344.248,24.036 L344.248,18.857 ZM356.370,18.857 L354.640,18.857 L354.640,24.036 L356.370,24.036 L356.370,18.857 ZM377.168,18.857 L371.973,18.857 L371.973,24.036 L377.168,24.036 L377.168,18.857 ZM584.675,12.348 L582.941,12.348 L582.941,14.073 L584.675,14.073 L584.675,12.348 ZM591.316,12.348 L589.582,12.348 L589.582,17.526 L591.316,17.526 L591.316,12.348 ZM604.751,12.348 L603.017,12.348 L603.017,14.073 L604.751,14.073 L604.751,12.348 ZM604.751,15.802 L603.017,15.802 L603.017,17.526 L604.751,17.526 L604.751,15.802 ZM1693.983,12.348 L1692.249,12.348 L1692.249,14.073 L1693.983,14.073 L1693.983,12.348 ZM1693.983,15.802 L1692.249,15.802 L1692.249,17.526 L1693.983,17.526 L1693.983,15.802 ZM1707.418,12.348 L1705.683,12.348 L1705.683,17.526 L1707.418,17.526 L1707.418,12.348 ZM1714.059,12.348 L1712.324,12.348 L1712.324,14.073 L1714.059,14.073 L1714.059,12.348 ZM463.214,14.994 L469.871,14.994 L469.844,15.021 L463.241,15.021 L463.214,14.994 ZM754.222,5.976 L750.129,9.930 L746.025,5.976 L754.222,5.976 ZM1375.975,5.976 L1371.871,9.930 L1367.778,5.976 L1375.975,5.976 Z"/></svg>');
+  --cp-razor-bottom: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1920px" height="39px"><path d="M1877.759,23.791 L1874.461,20.504 L1879.969,15.027 L1868.965,15.027 L1874.461,20.504 L1871.156,23.791 L1789.442,23.791 L1784.749,28.484 L1775.502,37.704 L1769.337,31.559 L1738.089,31.695 L1733.080,31.695 L1720.422,19.079 L1686.790,19.079 L1679.552,26.293 L1386.290,26.255 L1380.520,20.508 L1371.871,29.132 L1368.980,26.255 L1203.819,26.293 L1191.058,38.996 L1167.007,15.027 L1167.000,15.038 L1166.989,15.027 L1157.936,24.049 L1154.094,24.049 L1151.994,21.956 L1155.330,18.643 L1148.674,18.643 L1151.994,21.956 L1149.933,24.007 L1072.000,24.040 L1072.000,24.049 L1061.000,24.044 L1050.000,24.049 L1050.000,24.040 L972.067,24.007 L970.005,21.956 L973.326,18.643 L966.670,18.643 L970.005,21.956 L967.906,24.049 L964.064,24.049 L955.012,15.027 L955.000,15.038 L954.993,15.027 L930.942,38.996 L918.181,26.293 L818.020,26.255 L815.129,29.132 L806.480,20.508 L800.710,26.255 L661.448,26.293 L654.209,19.079 L620.578,19.079 L607.919,31.695 L602.910,31.695 L571.663,31.559 L565.497,37.704 L556.251,28.484 L551.557,23.791 L469.844,23.791 L466.539,20.504 L472.035,15.027 L461.031,15.027 L466.539,20.504 L463.241,23.791 L204.638,23.791 L195.467,15.027 L195.449,15.049 L195.426,15.027 L179.458,31.695 L166.537,31.695 L158.884,24.049 L0.001,24.049 L0.001,-0.012 L1919.998,-0.012 L1919.998,24.049 L1877.759,23.791 ZM228.624,15.027 L226.889,15.027 L226.889,20.205 L228.624,20.205 L228.624,15.027 ZM231.248,15.027 L229.518,15.027 L229.518,20.205 L231.248,20.205 L231.248,15.027 ZM243.370,15.027 L241.640,15.027 L241.640,20.205 L243.370,20.205 L243.370,15.027 ZM264.168,15.027 L258.973,15.027 L258.973,20.205 L264.168,20.205 L264.168,15.027 ZM584.675,24.989 L582.941,24.989 L582.941,26.714 L584.675,26.714 L584.675,24.989 ZM591.316,21.536 L589.582,21.536 L589.582,26.714 L591.316,26.714 L591.316,21.536 ZM604.751,21.536 L603.017,21.536 L603.017,23.260 L604.751,23.260 L604.751,21.536 ZM604.751,24.989 L603.017,24.989 L603.017,26.714 L604.751,26.714 L604.751,24.989 ZM1737.983,21.536 L1736.249,21.536 L1736.249,23.260 L1737.983,23.260 L1737.983,21.536 ZM1737.983,24.989 L1736.249,24.989 L1736.249,26.714 L1737.983,26.714 L1737.983,24.989 ZM1751.418,21.536 L1749.683,21.536 L1749.683,26.714 L1751.418,26.714 L1751.418,21.536 ZM1758.059,24.989 L1756.324,24.989 L1756.324,26.714 L1758.059,26.714 L1758.059,24.989 ZM1877.785,23.818 L1871.129,23.818 L1871.156,23.791 L1877.759,23.791 L1877.785,23.818 ZM1367.778,33.211 L1371.871,29.132 L1375.975,33.211 L1367.778,33.211 ZM469.871,23.818 L463.214,23.818 L463.241,23.791 L469.844,23.791 L469.871,23.818 Z"/></svg>');
+
+  /* where the focus ring and the lines are drawn: black on yellow, cyan on black */
+  --focus: var(--cp-black);
+  --line: var(--cp-black);
+}
 
 *,
 *::before,
@@ -12,255 +42,438 @@
 }
 
 html {
-  color-scheme: dark; /* dark scrollbars and form parts: the window is always dark */
+  color-scheme: light;
 }
 
 html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--cp-yellow);
+  color: var(--cp-ink);
   font-family: var(--font-mono);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--cp-black);
+  color: var(--cp-yellow);
 }
 
 [hidden] {
   display: none !important;
 }
 
+/* thin black scrollbars on yellow, yellow ones on black */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+
 .settings {
   display: grid;
-  grid-template-columns: 200px 1fr;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'head head'
     'nav main'
     'foot foot';
   height: 100%;
+  overflow: hidden;
 }
 
-/* ---------- head ---------- */
+/* ---------- head: a black band with a razor edge under it ---------- */
 
 .settings__head {
   grid-area: head;
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 2px solid var(--violet);
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 22px 8px;
+  background: var(--cp-black);
+  color: var(--cp-yellow);
+}
+
+.settings__head::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 17px;
+  margin-top: -1px;
+  background: var(--cp-black);
+  mask-image: var(--cp-razor-bottom);
+  mask-repeat: repeat-x;
+  mask-position: center -23px;
+  pointer-events: none;
+}
+
+/* diagonal stripes at the right of the band */
+.settings__head::after {
+  content: '';
+  flex: 0 1 132px;
+  min-width: 0;
+  height: 14px;
+  margin-left: auto;
+  background: repeating-linear-gradient(115deg, var(--cp-yellow) 0 5px, transparent 5px 10px);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
 }
 
 .settings__face {
-  width: 36px;
-  height: 36px;
+  flex: none;
+  width: 38px;
+  height: 38px;
   object-fit: cover;
-  background: var(--violet);
-  clip-path: polygon(14% 0, 100% 0, 100% 80%, 84% 100%, 0 100%, 0 16%);
+  background: var(--cp-yellow);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
 }
 
 .settings__title {
+  --glitch-shadow: 1px 1px var(--cp-cyan), 2px 2px var(--cp-blue);
+  min-width: 0;
   margin: 0;
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--cp-yellow);
+  text-shadow: var(--glitch-shadow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: cp-glitch 9s steps(1, end) 2s infinite;
 }
 
-/* ---------- sections ---------- */
+/* ---------- sections: a black tile of tabs ---------- */
 
 .settings__nav {
   grid-area: nav;
-  padding: 16px 0 16px 12px;
-  background: var(--ink-2);
+  padding: 28px 0 18px 16px;
   overflow-y: auto;
 }
 
 .settings__tabs {
+  --focus: var(--cp-cyan);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  padding: 12px 0 22px;
+  background: var(--cp-black);
+  clip-path: var(--cp-tile);
 }
 
 .settings__tab {
   appearance: none;
+  position: relative;
   border: 0;
-  padding: 10px 14px;
+  margin: 0 10px 0 0;
+  padding: 10px 14px 10px 18px;
   background: transparent;
-  color: var(--paper-2);
+  color: var(--cp-yellow);
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-align: left;
+  text-transform: uppercase;
   cursor: pointer;
-  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
   transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
 }
 
 .settings__tab:hover {
-  color: var(--paper);
-  background: oklch(0.3 0.06 300);
+  color: var(--cp-cyan);
 }
 
 .settings__tab[aria-selected='true'] {
-  background: var(--ink);
-  color: var(--green);
+  background: var(--cp-yellow);
+  color: var(--cp-black);
+  box-shadow: inset 5px 0 0 var(--cp-red);
 }
 
 .settings__tab:focus-visible {
-  outline: 2px solid var(--paper);
+  outline: 2px solid var(--focus);
   outline-offset: -4px;
 }
 
+.settings__tab[aria-selected='true']:focus-visible {
+  outline-color: var(--cp-black);
+}
+
+/* ---------- the open section ---------- */
+
 .settings__main {
   grid-area: main;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 20px 24px 24px;
+  padding: 26px 24px 24px 22px;
 }
 
 .settings__panel:focus-visible {
-  outline: 2px solid var(--violet);
+  outline: 2px dashed var(--focus);
   outline-offset: 6px;
 }
 
+/* a big heading, underlined with a bar that starts thick */
 .settings__heading {
-  margin: 0 0 14px;
+  --glitch-shadow: none;
+  margin: 0 0 16px;
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--paper);
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+  color: inherit;
+  overflow-wrap: anywhere;
+  animation: cp-glitch 11s steps(1, end) 1s infinite;
 }
 
+.settings__heading::after {
+  content: '';
+  display: block;
+  height: 6px;
+  margin-top: 6px;
+  background: currentColor;
+  clip-path: polygon(0 0, 0 100%, 18% 100%, calc(18% + 4px) 2px, 100% 2px, 100% 0);
+}
+
+/* the "set from her menu" note: a dark block with a cut corner */
 .settings__note {
+  --focus: var(--cp-cyan);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 16px;
-  margin: 0 0 18px;
-  padding: 10px 14px;
-  background: var(--ink-2);
-  border-left: 3px solid var(--blue);
+  margin: 0 0 20px;
+  padding: 12px 16px 14px;
+  background: var(--cp-panel);
+  border-left: 4px solid var(--cp-cyan);
+  clip-path: var(--cp-block);
 }
 
 .settings__noteText {
-  flex: 1 1 260px;
+  flex: 1 1 240px;
   margin: 0;
-  color: var(--paper-2);
+  color: var(--cp-cyan);
   line-height: 1.5;
 }
 
+/* the rows: a table between two bars */
 .settings__rows {
   margin: 0;
+}
+
+.settings__rows::before,
+.settings__rows::after {
+  content: '';
+  display: block;
+  height: 6px;
+  background: var(--line);
+}
+
+.settings__rows::before {
+  clip-path: polygon(0 100%, 100% 100%, 100% 0, 80% 0, calc(80% - 6px) 100%, 30% 100%, calc(30% - 6px) 0, 6px 0);
+}
+
+.settings__rows::after {
+  clip-path: polygon(60% 0, calc(60% + 6px) 100%, 100% 100%, 100% 0);
 }
 
 .settings__row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
   gap: 16px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--ink-2);
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings__row:last-child {
+  border-bottom: 0;
 }
 
 .settings__label {
-  color: var(--paper-2);
+  color: var(--cp-ink);
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
 .settings__value {
   margin: 0;
-  color: var(--paper);
+  color: var(--cp-ink);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-/* ---------- foot ---------- */
+.settings__row--wide {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* ---------- foot: a black band with a razor edge over it ---------- */
 
 .settings__foot {
+  --focus: var(--cp-cyan);
   grid-area: foot;
+  position: relative;
+  z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  padding: 12px 20px;
-  border-top: 1px solid var(--ink-2);
+  align-items: center;
+  gap: 8px 14px;
+  min-width: 0;
+  padding: 10px 22px 12px;
+  background: var(--cp-black);
 }
+
+.settings__foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 16px;
+  margin-bottom: -1px;
+  background: var(--cp-black);
+  mask-image: var(--cp-razor-top);
+  mask-repeat: repeat-x;
+  mask-position: center 0;
+  pointer-events: none;
+}
+
+/* the reset button at the left, closing at the right */
+.settings__foot > .settings__button:first-child {
+  margin-right: auto;
+}
+
+/* what main said about the last change (nothing: no room taken) */
+.settings__status:empty {
+  display: none;
+}
+
+.settings__status {
+  flex: 1 1 140px;
+  min-width: 0;
+  margin: 0;
+  color: var(--cp-cyan);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.settings__status--error {
+  color: var(--cp-red-light);
+  font-weight: 600;
+}
+
+/* ---------- buttons: cut corner, a notch, a cyan copy offset behind ---------- */
 
 .settings__button {
+  --btn-bg: var(--cp-black);
+  --btn-fg: var(--cp-yellow);
+  --btn-shadow: var(--cp-cyan);
+  --btn-cut: 9px;
+  --btn-clip: polygon(0 0, 100% 0, 100% 100%, 92% 100%, 92% calc(100% - 3px), 72% calc(100% - 3px), 72% 100%, var(--btn-cut) 100%, 0 calc(100% - var(--btn-cut)));
   appearance: none;
+  position: relative;
+  isolation: isolate;
+  flex: none;
   border: 0;
-  padding: 8px 14px 7px;
-  background: var(--ink-2);
-  color: var(--paper);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
+  margin-right: 4px; /* room for the offset copy */
+  padding: 8px 18px 8px 16px;
+  background: transparent;
+  color: var(--btn-fg);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
-  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
-  transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
 }
 
-.settings__note .settings__button {
-  background: var(--ink);
+.settings__button::before,
+.settings__button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: var(--btn-clip);
+  transition: transform 150ms var(--ease-out), filter 150ms var(--ease-out);
 }
 
-.settings__button:hover {
-  background: var(--violet);
+.settings__button::before {
+  background: var(--btn-shadow);
+  transform: translateX(4px);
+}
+
+.settings__button::after {
+  background: var(--btn-bg);
+}
+
+.settings__button:hover::before {
+  transform: translate(5px, 1px);
+}
+
+.settings__button:hover::after {
+  filter: brightness(1.15);
+}
+
+.settings__button:active::after {
+  transform: translate(1px, 1px);
 }
 
 .settings__button:focus-visible {
-  outline: 2px solid var(--paper);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 
-/* a narrow window: the sections in a row above, the rows one under the other */
-@media (max-width: 620px) {
-  .settings {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-areas: 'head' 'nav' 'main' 'foot';
-  }
-
-  .settings__head {
-    padding: 10px 16px;
-  }
-
-  .settings__nav {
-    padding: 8px 12px;
-    overflow-x: auto;
-    scrollbar-width: thin;
-  }
-
-  .settings__tabs {
-    flex-direction: row;
-  }
-
-  .settings__tab {
-    white-space: nowrap;
-  }
-
-  .settings__row {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
+.settings__button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .settings__tab,
-  .settings__button {
-    transition: none;
-  }
+.settings__button:disabled::before {
+  transform: none;
 }
 
-/* ---------- controls (CAPRI-04) ---------- */
-
-.settings__row {
-  align-items: center;
+/* on black: a yellow button */
+.settings__foot .settings__button,
+.settings__note .settings__button,
+.settings__confirm .settings__button {
+  --btn-bg: var(--cp-yellow);
+  --btn-fg: var(--cp-black);
 }
+
+.settings__button.settings__button--primary {
+  --btn-bg: var(--cp-cyan);
+  --btn-fg: var(--cp-black);
+  --btn-shadow: var(--cp-red);
+}
+
+.settings__button.settings__button--danger {
+  --btn-bg: var(--cp-danger);
+  --btn-fg: #fff;
+  --btn-shadow: var(--cp-yellow);
+}
+
+/* ---------- fields ---------- */
 
 .settings__control {
   display: flex;
@@ -270,34 +483,67 @@ body {
   min-width: 0;
 }
 
+/* a text field or a list: an underline with a tick at the left and a block at the right */
 .settings__select,
 .settings__input {
   flex: 1 1 160px;
   min-width: 0;
   max-width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--paper-3);
+  appearance: none;
+  border: 0;
   border-radius: 0;
-  background: var(--ink-2);
-  color: var(--paper);
-  font: 600 12px var(--font-mono);
+  padding: 6px 34px 9px 16px;
+  color: var(--cp-ink);
+  font: 600 13px var(--font-mono);
+  background-color: rgb(0 0 0 / 0.07);
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(45deg, transparent calc(50% - 1.2px), var(--line) calc(50% - 1.2px) calc(50% + 1.2px), transparent calc(50% + 1.2px)),
+    linear-gradient(var(--line), var(--line)),
+    linear-gradient(110deg, transparent 3px, var(--line) 3.5px);
+  background-size: 10px 10px, calc(100% - 10px) 2px, 30px 6px;
+  background-position: left bottom, 10px 100%, right bottom;
+  transition: background-color 150ms var(--ease-out);
+}
+
+/* a list: the same underline, and an arrow pointing down drawn in two halves */
+.settings__select {
+  padding-right: 30px;
+  cursor: pointer;
+  background-size: 10px 10px, calc(100% - 10px) 2px, 7px 7px, 7px 7px;
+  background-position: left bottom, 10px 100%, right 15px top 50%, right 8px top 50%;
+  background-image:
+    linear-gradient(45deg, transparent calc(50% - 1.2px), var(--line) calc(50% - 1.2px) calc(50% + 1.2px), transparent calc(50% + 1.2px)),
+    linear-gradient(var(--line), var(--line)),
+    linear-gradient(to top right, transparent 50%, var(--line) 50%),
+    linear-gradient(to top left, transparent 50%, var(--line) 50%);
+}
+
+.settings__select option {
+  background: #fff;
+  color: #000;
 }
 
 .settings__select:hover,
 .settings__input:hover {
-  border-color: var(--paper-2);
+  background-color: rgb(0 0 0 / 0.12);
 }
 
 .settings__select:focus-visible,
-.settings__input:focus-visible,
-.settings__range:focus-visible,
-.settings__switch:focus-visible {
-  outline: 2px solid var(--paper);
-  outline-offset: 2px;
+.settings__input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  background-color: rgb(0 255 210 / 0.35);
+}
+
+.settings__input::placeholder {
+  color: var(--cp-ink-soft);
+  opacity: 1;
 }
 
 .settings__input[aria-invalid='true'] {
-  border-color: var(--red);
+  --line: var(--cp-red-ink);
+  background-color: rgb(255 0 60 / 0.1);
 }
 
 .settings__select:disabled,
@@ -312,13 +558,13 @@ body {
   appearance: none;
   position: relative;
   flex: none;
-  width: 38px;
-  height: 20px;
+  width: 46px;
+  height: 22px;
   margin: 0;
-  background: var(--ink-2);
-  border: 1px solid var(--paper-3);
+  background: transparent;
+  border: 2px solid var(--cp-black);
   cursor: pointer;
-  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out);
+  transition: background 150ms var(--ease-out);
 }
 
 .settings__switch::after {
@@ -326,30 +572,59 @@ body {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 12px;
+  width: 16px;
   height: 12px;
-  background: var(--paper-2);
+  background: var(--cp-black);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
   transition: transform 150ms var(--ease-out), background 150ms var(--ease-out);
 }
 
 .settings__switch:checked {
-  background: oklch(0.35 0.12 148);
-  border-color: var(--green);
+  background: var(--cp-black);
 }
 
 .settings__switch:checked::after {
-  transform: translateX(18px);
-  background: var(--green);
+  transform: translateX(21px);
+  background: var(--cp-cyan);
 }
 
+.settings__switch:focus-visible,
+.settings__range:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* a slider: a black rail, a slanted block to drag */
 .settings__range {
   flex: 1 1 140px;
   min-width: 0;
-  accent-color: var(--violet);
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings__range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--cp-black);
+}
+
+.settings__range::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 20px;
+  margin-top: -8px;
+  background: var(--cp-black);
+  clip-path: polygon(35% 0, 100% 0, 65% 100%, 0 100%);
+}
+
+.settings__range:focus-visible::-webkit-slider-thumb {
+  background: var(--cp-red-ink);
 }
 
 .settings__rangeValue {
-  min-width: 4.5ch;
+  min-width: 5ch;
   text-align: right;
   font-weight: 600;
 }
@@ -357,7 +632,8 @@ body {
 .settings__inline {
   display: flex;
   flex: 1 1 100%;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -368,12 +644,18 @@ body {
   margin: 0;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--paper-3);
+  color: var(--cp-ink-soft);
+  overflow-wrap: anywhere;
 }
 
+/* an error under its field: a black tag, red text */
 .settings__fieldError {
-  color: var(--red);
+  padding: 5px 12px 5px 10px;
+  background: var(--cp-black);
+  border-left: 4px solid var(--cp-red);
+  color: var(--cp-red-light);
   font-weight: 600;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
 }
 
 .settings__restart {
@@ -381,45 +663,115 @@ body {
   flex: 1 1 100%;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: 6px 12px;
 }
 
 .settings__restartText {
   flex: 1 1 auto;
-  color: var(--green);
+  color: var(--cp-ink);
   font-weight: 600;
+}
+
+.settings__restartText::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  background: var(--cp-red);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 .settings__keyState {
   display: block;
   margin-top: 2px;
   font-size: 11px;
-  color: var(--paper-3);
+  color: var(--cp-ink-soft);
 }
 
-/* the status line in the foot: what main said about the last change */
-.settings__foot {
-  align-items: center;
-  gap: 12px;
+/* ---------- updates of the app (About) ---------- */
+
+.settings__update {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 
-.settings__status {
-  flex: 1 1 auto;
-  min-width: 0;
+.settings__updateState {
   margin: 0;
-  color: var(--green);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--cp-ink);
   overflow-wrap: anywhere;
 }
 
-.settings__status--error {
-  color: var(--red);
-  font-weight: 600;
+.settings__updateState--error {
+  padding: 5px 12px 5px 10px;
+  background: var(--cp-black);
+  border-left: 4px solid var(--cp-red);
+  color: var(--cp-red-light);
 }
 
-/* the reset confirmation, over the window */
+.settings__progress {
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border: 0;
+  background: rgb(0 0 0 / 0.15);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+}
+
+.settings__progress::-webkit-progress-bar {
+  background: rgb(0 0 0 / 0.15);
+}
+
+.settings__progress::-webkit-progress-value {
+  background: repeating-linear-gradient(115deg, var(--cp-black) 0 10px, var(--cp-red) 10px 13px);
+}
+
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.settings__actions--start {
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+/* the release notes: a dark block, cyan text */
+.settings__notes {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 10px 14px 14px;
+  background: var(--cp-panel);
+  color: var(--cp-cyan);
+  color-scheme: dark;
+  --line: var(--cp-cyan);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  clip-path: var(--cp-block);
+}
+
+/* ---------- the confirmations, over the window ---------- */
+
+body:has(> .settings__confirm)::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  background: rgb(0 0 0 / 0.72);
+}
+
 .settings__confirm {
+  --focus: var(--cp-cyan);
+  --line: var(--cp-yellow);
   position: fixed;
   left: 50%;
   top: 50%;
@@ -428,104 +780,189 @@ body {
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   transform: translate(-50%, -50%);
-  padding: 18px 20px;
-  background: var(--ink);
-  border: 2px solid var(--violet);
-  box-shadow: 0 0 0 100vmax oklch(0.1 0.03 300 / 0.75);
+  padding: 22px 24px 22px;
+  background: var(--cp-panel);
+  color: var(--cp-paper);
+  border-top: 4px solid var(--cp-yellow);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+}
+
+/* stripes in the top corner */
+.settings__confirm::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 26px;
+  width: 64px;
+  height: 8px;
+  background: repeating-linear-gradient(115deg, var(--cp-red) 0 4px, transparent 4px 8px);
+}
+
+.settings__confirm .settings__heading {
+  padding-right: 72px;
+  font-size: 20px;
+  color: var(--cp-yellow);
 }
 
 .settings__confirm .settings__noteText {
   margin: 0 0 10px;
+  color: var(--cp-paper);
 }
 
-.settings__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
+/* ---------- the glitch: a few broken frames, then still for a long while ---------- */
+
+@keyframes cp-glitch {
+  0% {
+    transform: none;
+    text-shadow: var(--glitch-shadow);
+    clip-path: none;
+  }
+  90% {
+    transform: translateX(-3px);
+    text-shadow: 2px 0 var(--cp-cyan), -2px 0 var(--cp-red);
+    clip-path: polygon(-5% 45%, 105% 45%, 105% 110%, -5% 110%);
+  }
+  91% {
+    transform: translateX(3px);
+    clip-path: polygon(-5% -10%, 105% -10%, 105% 40%, -5% 40%);
+  }
+  92% {
+    transform: translateX(-1px);
+    text-shadow: 1px 0 var(--cp-cyan), -1px 0 var(--cp-red);
+    clip-path: polygon(-5% 20%, 105% 20%, 105% 75%, -5% 75%);
+  }
+  93% {
+    transform: none;
+    text-shadow: var(--glitch-shadow);
+    clip-path: none;
+  }
 }
 
-.settings__button--danger {
-  background: var(--red);
-  color: var(--ink);
+/* ---------- a narrow window: the sections in a row above, the rows one under the other ---------- */
+
+@media (max-width: 620px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: 'head' 'nav' 'main' 'foot';
+  }
+
+  .settings__head {
+    padding: 8px 16px 6px;
+  }
+
+  .settings__face {
+    width: 30px;
+    height: 30px;
+  }
+
+  .settings__title {
+    font-size: 20px;
+  }
+
+  .settings__nav {
+    padding: 20px 14px 0;
+    overflow: visible;
+  }
+
+  .settings__tabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 5px 14px 5px 5px;
+  }
+
+  .settings__tab {
+    margin: 0;
+    padding: 6px 8px 7px 9px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .settings__tab[aria-selected='true'] {
+    box-shadow: inset 0 -4px 0 var(--cp-red);
+  }
+
+  .settings__main {
+    padding: 18px 16px 24px;
+  }
+
+  .settings__heading {
+    font-size: 22px;
+  }
+
+  .settings__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .settings__foot {
+    padding: 8px 16px 10px;
+  }
+
+  /* what main said: a line of its own under the buttons */
+  .settings__status {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 
-.settings__button--danger:hover {
-  background: oklch(0.72 0.22 15);
-}
+/* a low window: a thinner band at the top */
+@media (max-height: 420px) {
+  .settings__head {
+    padding-top: 6px;
+    padding-bottom: 4px;
+  }
 
-.settings__button:disabled {
-  opacity: 0.5;
-  cursor: default;
+  .settings__face {
+    width: 28px;
+    height: 28px;
+  }
+
+  .settings__title {
+    font-size: 19px;
+  }
+
+  .settings__main {
+    padding-top: 20px;
+  }
+
+  .settings__heading {
+    margin-bottom: 10px;
+    font-size: 20px;
+  }
+
+  .settings__confirm {
+    max-height: calc(100vh - 16px);
+    padding: 14px 18px 16px;
+  }
+
+  .settings__confirm .settings__heading {
+    font-size: 17px;
+  }
+
+  .settings__confirm .settings__noteText {
+    line-height: 1.4;
+  }
+
+  .settings__actions {
+    margin-top: 10px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .settings__title,
+  .settings__heading {
+    animation: none;
+  }
+
+  .settings__tab,
+  .settings__button::before,
+  .settings__button::after,
+  .settings__select,
+  .settings__input,
   .settings__switch,
   .settings__switch::after {
     transition: none;
   }
-}
-
-.settings__row--wide {
-  grid-template-columns: 1fr;
-  gap: 6px;
-}
-
-.settings__inline .settings__button {
-  flex: none;
-  white-space: nowrap;
-}
-
-.settings__foot .settings__button {
-  flex: none;
-  white-space: nowrap;
-}
-
-/* the updates of the app (About): status, version offered, progress, buttons, release notes */
-.settings__update {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-}
-
-.settings__updateState {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--paper);
-  overflow-wrap: anywhere;
-}
-
-.settings__updateState--error {
-  color: var(--red);
-  font-weight: 600;
-}
-
-.settings__progress {
-  width: 100%;
-  height: 8px;
-  accent-color: var(--violet);
-}
-
-.settings__actions--start {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.settings__button--primary {
-  background: var(--violet);
-  color: var(--paper);
-}
-
-.settings__notes {
-  max-height: 160px;
-  overflow-y: auto;
-  padding: 8px 10px;
-  border: 1px solid var(--paper-3);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--paper-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
