@@ -235,8 +235,8 @@ test('Windows: a config held open (rename refused) is still written, in place', 
     fs.renameSync = busy('ENOSPC');
     assert.throws(() => config.commit({ volume: 0.2 }), { code: 'ENOSPC' });
     assert.equal(config.load().volume, 0.9);
-    // elsewhere a refused rename is a failure: no writing in place
-    Object.defineProperty(process, 'platform', platform);
+    // Explicitly simulate a non-Windows host even when this test runs on Windows.
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
     fs.renameSync = busy('EPERM');
     assert.throws(() => config.commit({ volume: 0.2 }), { code: 'EPERM' });
     assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).volume, 0.9);

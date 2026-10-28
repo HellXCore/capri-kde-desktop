@@ -6,7 +6,6 @@ const { PassThrough } = require('node:stream');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn: realSpawn } = require('node:child_process');
 const { parseLine, toUpdate, overlayWindowId, startMacWindowWatch } = require('../src/main/mac/window-watch');
 
 const line = (o) => JSON.stringify({ v: 1, fg: null, displays: [], wins: [], ...o });
@@ -206,9 +205,17 @@ test('mac watch: a helper that cannot be executed (no exit event) is still retri
   const children = [];
   const states = [];
   const logs = [];
-  const spawn = (...a) => {
-    const c = realSpawn(...a);
+  // Model spawn's error/close pair without relying on POSIX executable permissions.
+  const spawn = () => {
+    const c = new EventEmitter();
+    c.stdout = new PassThrough();
+    c.stderr = new PassThrough();
+    c.kill = () => {};
     children.push(new Promise((r) => c.once('close', r)));
+    setImmediate(() => {
+      c.emit('error', Object.assign(new Error('spawn EACCES'), { code: 'EACCES' }));
+      c.emit('close', -1);
+    });
     return c;
   };
   startMacWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok), helper, spawn, log: (...a) => logs.push(a.join(' ')) });

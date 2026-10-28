@@ -130,7 +130,16 @@ test('a bundle that cannot be replaced is said before anything is downloaded', a
   assert.equal(locationProblem('/Volumes/Capri 0.1.0/Capri.app'), 'disk image or external volume');
   assert.equal(locationProblem(null), 'not an app bundle');
   assert.equal(bundleOf('/usr/local/bin/capri'), null);
-  if (process.getuid?.() === 0) return; // root writes anywhere
+  const s = setup(t);
+  const denied = { ...fs, accessSync() { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); } };
+  const installer = s.make({ fs: denied });
+  await assert.rejects(installer.download(s.files, '0.2.0'), (err) => err.code === 'ERR_CAPRI_LOCATION');
+  assert.equal(s.downloads(), 0);
+});
+
+test('POSIX: real read-only bundle parent prevents any download', {
+  skip: process.platform === 'win32' || process.getuid?.() === 0,
+}, async (t) => {
   const s = setup(t);
   fs.chmodSync(s.parent, 0o555);
   const installer = s.make();
