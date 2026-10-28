@@ -611,7 +611,8 @@ function rebuildTray() {
     {
       label: t.initiative,
       submenu: [['quiet', t.initiativeQuiet], ['normal', t.initiativeNormal], ['active', t.initiativeActive]].map(([initiative, label]) => ({
-        label, type: 'radio', checked: (cfg.initiative || 'normal') === initiative, click: () => updateConfig({ initiative }),
+        // an unknown value (an old or hand-edited config) reads as normal, as in her settings window
+        label, type: 'radio', checked: (['quiet', 'active'].includes(cfg.initiative) ? cfg.initiative : 'normal') === initiative, click: () => updateConfig({ initiative }),
       })),
     },
     {
