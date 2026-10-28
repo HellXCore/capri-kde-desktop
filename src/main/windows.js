@@ -87,7 +87,9 @@ function startMacWatch({
   if (!watch.available) return { stop() {}, refresh() {} };
 
   let pending = null;
+  let held = false; // asleep or locked: only a wake or an unlock starts a fresh helper, not a screen event
   const soon = (ms) => {
+    if (held) return;
     later.clear(pending);
     pending = later.set(() => {
       pending = null;
@@ -95,12 +97,18 @@ function startMacWatch({
     }, ms);
   };
   const pause = () => {
+    held = true;
     later.clear(pending);
     pending = null;
     watch.pause();
   };
   const on = {
-    power: { suspend: pause, 'lock-screen': pause, resume: () => soon(SETTLE.resume), 'unlock-screen': () => soon(SETTLE['unlock-screen']) },
+    power: {
+      suspend: pause,
+      'lock-screen': pause,
+      resume: () => { held = false; soon(SETTLE.resume); },
+      'unlock-screen': () => { held = false; soon(SETTLE['unlock-screen']); },
+    },
     // a screen plugged in, unplugged or changed: the helper's view of the screens (visible areas,
     // scale) is read again by a fresh one
     screens: Object.fromEntries(['display-added', 'display-removed', 'display-metrics-changed'].map((e) => [e, () => soon(SETTLE.screens)])),
