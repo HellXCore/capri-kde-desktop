@@ -39,6 +39,7 @@ function which(cmd) {
 
 // Ollama's own app (it runs the server from the tray) and its command, where its installer puts them
 function ollamaFiles() {
+  if (!WIN) return { app: '', cli: '' };
   const dir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', 'Ollama');
   return { app: path.join(dir, 'ollama app.exe'), cli: path.join(dir, 'ollama.exe') };
 }
@@ -53,6 +54,7 @@ async function ollamaState() {
 
 // Installs Ollama with winget (Windows' own package manager); onLine(text) for what it prints.
 function installOllama(onLine) {
+  if (!WIN) return Promise.resolve({ ok: false, error: 'Install Ollama from https://ollama.com/download, then retry.' });
   return new Promise((resolve) => {
     const child = spawn('winget', [
       'install', '--id', 'Ollama.Ollama', '--exact', '--silent',

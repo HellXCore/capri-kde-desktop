@@ -9,6 +9,7 @@ const on = (channel) => (fn) => {
 };
 
 contextBridge.exposeInMainWorld('host', {
+  rendererReady: () => ipcRenderer.send('renderer:ready'),
   onClaudeEvent: on('claude:event'),
   onCommand: on('capri:command'),
   onConfig: on('capri:config'),

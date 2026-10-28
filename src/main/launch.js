@@ -132,7 +132,8 @@ function match(items, text) {
 
 // What's on your desktop (yours and the shared one): files, folders and shortcuts, by name.
 function desktopItems() {
-  const dirs = [app.getPath('desktop'), path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop')];
+  const dirs = [app.getPath('desktop')];
+  if (WIN) dirs.push(path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'));
   const items = [];
   for (const dir of dirs) {
     let entries = [];
@@ -151,8 +152,8 @@ function desktopItems() {
 }
 
 // files that run something: never opened without a click, even named by you
-const RUNS = /\.(exe|bat|cmd|ps1|vbs|vbe|js|jse|wsf|wsh|msi|msp|reg|scr|com|jar|hta|cpl|pif)$/i;
-const risky = (item) => item?.kind === 'file' && RUNS.test(item.id);
+const RUNS = /\.(app|sh|bash|zsh|command|desktop|AppImage|exe|bat|cmd|ps1|vbs|vbe|js|jse|wsf|wsh|msi|msp|reg|scr|com|jar|hta|cpl|pif)$/i;
+const risky = (item) => ['file', 'folder'].includes(item?.kind) && RUNS.test(item.id);
 
 // Folders asked for by what they are ("ouvre mes téléchargements", "open the file explorer").
 const FOLDERS = [
@@ -172,6 +173,11 @@ function knownFolder(text) {
 }
 
 function openKnown(id) {
+  if (id === 'explorer' && !WIN) return shell.openPath(app.getPath('home'));
+  if (id === 'recycle' && !WIN) {
+    if (process.platform === 'darwin') return shell.openPath(path.join(app.getPath('home'), '.Trash'));
+    return shell.openExternal('trash:///');
+  }
   if (id === 'explorer') return spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
   if (id === 'recycle') return spawn('explorer.exe', ['shell:RecycleBinFolder'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
   return shell.openPath(app.getPath(id));
@@ -188,7 +194,8 @@ async function find(text) {
 async function launch({ kind, id } = {}) {
   if (kind === 'known') {
     if (!FOLDERS.some(([key]) => key === id)) throw new Error('not found');
-    await openKnown(id);
+    const error = await openKnown(id);
+    if (typeof error === 'string' && error) throw new Error(error);
     return undefined;
   }
   if (kind === 'file' || kind === 'folder') {

@@ -155,13 +155,28 @@ async function boot() {
   // mousemove came, the hook that brings it to her is gone (Windows drops it without a word, after
   // sleep say), and main.js puts in a new one.
   let seen = null;
+  let followedAt = -Infinity;
+  let cursorPending = false;
   let rearmedAt = -Infinity;
   let follow = null; // (pointer) => she may follow it to another screen (below)
   setInterval(async () => {
+    if (cursorPending) return;
+    cursorPending = true;
     const at = await host.cursor().catch(() => null);
+    cursorPending = false;
     const before = seen;
     seen = at;
-    follow?.(at);
+    // Keep the multi-screen delay at two seconds even with Linux's faster hit testing.
+    if (config.platform !== 'linux' || performance.now() - followedAt >= WATCH_MS) {
+      followedAt = performance.now();
+      follow?.(at);
+    }
+    if (config.platform === 'linux') {
+      mouse = at?.inside ? { x: at.x, y: at.y } : null;
+      refreshHit();
+      hoverChip();
+      return;
+    }
     if (!at?.inside) return;
     const now = performance.now();
     // the pointer is on her and she isn't clickable (its moves stopped reaching her): she is now
@@ -173,7 +188,7 @@ async function boot() {
     if (now - lastMove < WATCH_MS * 1.5 || now - rearmedAt < 20000) return;
     rearmedAt = now;
     host.rearm();
-  }, WATCH_MS);
+  }, config.platform === 'linux' ? 50 : WATCH_MS);
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (chip.visible && chip.contains(e.clientX, e.clientY, 0)) host.openMenu();
@@ -786,6 +801,8 @@ async function boot() {
   if (config.visible === false) capri.stowNow();
   else if (intro) await capri.intro(capri.spot('post'));
   else await capri.materialize(capri.spot('post'));
+  host.rendererReady();
+
   // Windows has its animations off and she's following it: she barely moves. The first time, she
   // says so and asks whether to move anyway (her menu › Animations changes it later).
   if (reducedMotion.setting === 'auto' && reducedMotion.system && !config.motionAsked) {
