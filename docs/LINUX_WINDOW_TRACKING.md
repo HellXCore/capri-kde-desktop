@@ -10,7 +10,7 @@ Status: **implemented, not yet verified on a real compositing desktop.** It was 
 
 ### What counts as a window to sit on
 
-Included: `NORMAL` and `DIALOG` windows, and windows with no type. A window must also be on the visible workspace (or on all workspaces / sticky), not `HIDDEN` (minimized), not `SKIP_TASKBAR`, and at least 200×120 px. Capri's own windows are excluded by overlay XID and pid. Excluded types: desktop, dock/panel, menus, tooltips, notifications, splash, toolbar, utility. Maximized (both axes) or fullscreen windows get `max: true`, the same as Windows.
+Included: `NORMAL` and `DIALOG` windows, and windows with no type. A window must also be on the visible workspace (or on all workspaces / sticky), not `HIDDEN` (minimized), not `SKIP_TASKBAR`, and at least 200×120 px. Only Capri's overlay is excluded (by its XID; it also skips the taskbar). Her other windows, such as the demo terminal she takes over, are seats, the same as on Windows. A window's first standard `_NET_WM_WINDOW_TYPE_*` decides its type; vendor types listed before it (Qt's `_KDE_NET_WM_WINDOW_TYPE_OVERRIDE`) are skipped. Excluded types: desktop, dock/panel, menus, tooltips, notifications, splash, toolbar, utility. Maximized (both axes) or fullscreen windows get `max: true`, the same as Windows.
 
 Geometry is the outer frame. The window manager's `_NET_FRAME_EXTENTS` (title bar included) is added, and a GTK client-side-decorated window's transparent shadow (`_GTK_FRAME_EXTENTS`) is removed. When a dock/panel is the active window, `taskbar: true` is set. Windows-only fields (`ai`, `game`, `usb`, `plug`) stay empty on Linux.
 
@@ -37,7 +37,7 @@ Checked (on macOS, in `tests/x11.test.js`):
 
 - parsing of root and window properties, both with and without `-notype`; empty and missing values
 - parsing of `xwininfo -tree` with nested frames, names that contain geometry-like text, and negative positions
-- filtering by type, state, workspace, sticky, own window, and size; frame and CSD extents; `max`
+- filtering by type (vendor types skipped), state, workspace, sticky, own overlay, Capri's other windows, and size; frame and CSD extents; `max`
 - px→DIP conversion for scale 1 and 2, two screens, and two screens at 1.5
 - watcher: off for `xwayland`/`wayland`/no session without running any tool; on with the tools present; a snapshot only on change; immediate give-up without the tools; give-up after repeated non-EWMH polls; a window closing between calls
 - `npm run test:smoke` on macOS (the adapter does not start there)

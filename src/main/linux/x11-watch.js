@@ -25,7 +25,7 @@ function execTool(cmd, args) {
   });
 }
 
-// session: capabilities.linuxSession(). self: { id, pid } of the overlay. onSnapshot(snap) gets
+// session: capabilities.linuxSession(). self: { id } of the overlay. onSnapshot(snap) gets
 // physical-pixel snapshots; onState(ok) whether tracking runs. run/timer are for the tests.
 function startX11Watch({
   session, self = {}, onSnapshot, onState = () => {}, run = execTool,

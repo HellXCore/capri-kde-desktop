@@ -71,6 +71,9 @@ function parseRoot(text) {
 function parseWindow(text) {
   const p = parseXprop(text);
   const atoms = (name, prefix) => (p[name] || []).map((a) => a.replace(prefix, ''));
+  // EWMH: the types in order of preference, the first one the window manager knows wins, so
+  // vendor types listed first (Qt's _KDE_NET_WM_WINDOW_TYPE_OVERRIDE) are skipped
+  const types = (p._NET_WM_WINDOW_TYPE || []).filter((a) => a.startsWith('_NET_WM_WINDOW_TYPE_'));
   const extents = (name) => {
     const [left, right, top, bottom] = numbers(p[name]);
     return [left, right, top, bottom].every(Number.isFinite) ? { left, right, top, bottom } : null;
@@ -78,7 +81,7 @@ function parseWindow(text) {
   const desktop = numbers(p._NET_WM_DESKTOP)[0];
   const pid = numbers(p._NET_WM_PID)[0];
   return {
-    types: atoms('_NET_WM_WINDOW_TYPE', /^_NET_WM_WINDOW_TYPE_/),
+    types: types.map((a) => a.replace(/^_NET_WM_WINDOW_TYPE_/, '')),
     state: atoms('_NET_WM_STATE', /^_NET_WM_STATE_/),
     desktop: Number.isFinite(desktop) ? desktop : null,
     frame: extents('_NET_FRAME_EXTENTS'), // the window manager's decorations around it
@@ -121,11 +124,11 @@ function outerRect(rect, info) {
 const typeOf = (info) => (info.types.length ? info.types[0] : 'NORMAL');
 
 // Can she sit on it: a normal window or dialog, shown (not minimized), on the workspace in view,
-// listed in the taskbar, and not hers.
-function isSeat(info, { desktop, self }) {
+// listed in the taskbar. Her other windows (the demo terminal, test windows) are seats, as on
+// Windows: only the overlay is left out, by id (buildSnapshot), and it skips the taskbar anyway.
+function isSeat(info, { desktop }) {
   if (!SEATS.has(typeOf(info))) return false;
   if (info.state.includes('HIDDEN') || info.state.includes('SKIP_TASKBAR')) return false;
-  if (self?.pid && info.pid === self.pid) return false;
   const onDesktop = info.desktop == null || desktop == null || info.desktop === ALL_DESKTOPS
     || info.desktop === desktop || info.state.includes('STICKY');
   return onDesktop;
@@ -133,7 +136,7 @@ function isSeat(info, { desktop, self }) {
 
 // The snapshot, in the Windows helper's format (physical pixels of the X screen, front first):
 //   { fg, taskbar, ai, game, usb, plug, wins: [{ id, x, y, w, h, max }] }
-// `infos`: id -> parseWindow(); `rects`: parseTree(); `self`: { id, pid } of Capri's overlay.
+// `infos`: id -> parseWindow(); `rects`: parseTree(); `self`: { id } of Capri's overlay.
 // What only Windows reports (other AIs in front, games, USB sticks) stays empty.
 function buildSnapshot({ root, infos, rects, self = {} }) {
   const wins = [];
@@ -142,7 +145,7 @@ function buildSnapshot({ root, infos, rects, self = {} }) {
     if (id === self.id) continue;
     const info = infos.get(id);
     const rect = rects.get(id);
-    if (!info || !rect || !isSeat(info, { desktop: root.desktop, self })) continue;
+    if (!info || !rect || !isSeat(info, { desktop: root.desktop })) continue;
     const r = outerRect(rect, info);
     if (r.w < MIN_W || r.h < MIN_H) continue;
     const max = info.state.includes('FULLSCREEN')
