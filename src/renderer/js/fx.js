@@ -5,7 +5,7 @@
 // the cut-ins (real frames of her from the show).
 // Drawn on whole frames (24 fps) and only while something is alive.
 
-import { rand, pick, clamp } from './util.js';
+import { rand, pick, clamp, frameIn } from './util.js';
 
 export const COLORS = {
   red: '#ff2152',
@@ -250,6 +250,8 @@ export class FxLayer {
     this.items = [];
     this.running = false;
     this.last = 0;
+    this.frame = this.frame.bind(this);
+    this.nextFrame = null; // cancels the frame the loop is waiting for
   }
 
   resize(width, height) {
@@ -280,9 +282,11 @@ export class FxLayer {
   add(item) {
     item.born = performance.now();
     this.items.push(item);
-    if (!this.running) {
+    if (!this.running || item.smooth) {
+      // something that moves smoothly (her intro) wants the very next refresh, not the next whole frame
       this.running = true;
-      requestAnimationFrame((t) => this.frame(t));
+      this.nextFrame?.();
+      this.nextFrame = frameIn(0, this.frame);
     }
     return item;
   }
@@ -814,9 +818,12 @@ export class FxLayer {
 
   // Whole frames at 24 fps, or every screen refresh while something that moves smoothly is on
   // (her intro: its camera moves follow the clock, its drawings still change on whole frames).
+  // Between whole frames it waits with a timer, not a request for every refresh (see frameIn).
   frame(now) {
-    if (now - this.last < FRAME_MS - 2 && !this.items.some((it) => it.smooth)) {
-      requestAnimationFrame((t) => this.frame(t));
+    this.nextFrame = null;
+    const smooth = this.items.some((it) => it.smooth);
+    if (now - this.last < FRAME_MS - 2 && !smooth) {
+      this.nextFrame = frameIn(this.last + FRAME_MS - performance.now(), this.frame);
       return;
     }
     const dt = Math.min(0.08, (now - (this.last || now)) / 1000);
@@ -832,7 +839,7 @@ export class FxLayer {
     for (const it of this.items) this.draw(it, (now - it.born) / it.life, dt, now);
 
     if (this.items.length) {
-      requestAnimationFrame((t) => this.frame(t));
+      this.nextFrame = frameIn(this.items.some((it) => it.smooth) ? 0 : now + FRAME_MS - performance.now(), this.frame);
     } else {
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.running = false;

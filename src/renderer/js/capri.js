@@ -9,7 +9,7 @@
 
 import { SpriteRenderer, SPRITE } from './sprite.js';
 import { ACTS, NEUTRAL, Player } from './acting.js';
-import { sleep, rand, pick, clamp, lerp, ease, tween, reducedMotion, today } from './util.js';
+import { sleep, rand, pick, clamp, lerp, ease, tween, reducedMotion, today, frameIn } from './util.js';
 
 const ON_TWOS = 1000 / 12;
 const ON_ONES = 1000 / 24;
@@ -124,7 +124,32 @@ export class Capri {
     this.setScale(this.scale);
     this.bindPointer();
     this.loop = this.loop.bind(this);
-    requestAnimationFrame(this.loop);
+    this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.looping = true;
+    this.schedule();
+  }
+
+  // Busy, hidden, her stance, her mode and her acts set how often she's drawn (interval): when one
+  // changes, the frame the loop waits for is planned again, so going faster never waits on the slower beat.
+  get busy() {
+    return this._busy;
+  }
+
+  set busy(on) {
+    if (on === this._busy) return;
+    this._busy = on;
+    this.kick();
+  }
+
+  // Put away or down to her mask: nothing of her to draw, the loop stops until she's back.
+  get hidden() {
+    return this._hidden;
+  }
+
+  set hidden(on) {
+    if (on === this._hidden) return;
+    this._hidden = on;
+    this.kick();
   }
 
   // ---------- geometry ----------
@@ -416,12 +441,28 @@ export class Capri {
     return this.mode === 'sleep' ? ASLEEP : ON_TWOS;
   }
 
+  // Drawn on twos (ones while she moves fast, sixes asleep): woken for the refresh her next drawing is
+  // due on, not for every refresh in between (see frameIn).
   loop(now) {
-    requestAnimationFrame(this.loop);
+    this.nextFrame = null;
     if (this.hidden) return;
-    if (now - this.lastDraw < this.interval() - 1) return;
-    this.drawFrame(now);
-    this.behave(now);
+    if (now - this.lastDraw >= this.interval() - 1) {
+      this.drawFrame(now);
+      this.behave(now);
+    }
+    this.schedule();
+  }
+
+  schedule() {
+    if (this.nextFrame || this.hidden) return;
+    this.nextFrame = frameIn(this.lastDraw + this.interval() - performance.now(), this.loop);
+  }
+
+  kick() {
+    if (!this.looping) return;
+    this.nextFrame?.();
+    this.nextFrame = null;
+    this.schedule();
   }
 
   drawFrame(now = performance.now()) {
@@ -606,6 +647,7 @@ export class Capri {
     this.endAct(false);
     return new Promise((done) => {
       this.act = { player: next, done };
+      this.kick(); // an act on ones
     });
   }
 
@@ -627,6 +669,7 @@ export class Capri {
     if (stance !== 'down') this.lying = null;
     this.base = this.restBase(dir);
     this.pivot();
+    this.kick(); // held, thrown or falling: drawn on ones
   }
 
   // The cycle under her acts: her stance's, or holding her arm out at what she's showing you.
@@ -656,6 +699,7 @@ export class Capri {
     const prev = this.mode;
     this.mode = mode;
     if (mode === 'sleep') this.sleptAt = now;
+    this.kick(); // asleep on sixes, awake on twos
     this.onMode?.(mode, prev);
     if (this.stance === 'stand') this.base = this.restBase();
     const p = this.p;
