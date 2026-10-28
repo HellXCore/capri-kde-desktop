@@ -68,9 +68,10 @@ function checkUpdateFeeds(dir, version, installers) {
 function draftPayload(existing, version, sha) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Use a stable x.y.z package version');
   if (existing && !existing.draft) throw new Error(`fork-v${version} is already published; bump package.json and package-lock.json`);
+  const notes = path.join(__dirname, '..', 'docs', 'releases', `${version}.md`);
   return {
     tag_name: `fork-v${version}`, target_commitish: sha, name: `Capri v${version}`, draft: true,
-    body: `Cross-platform build from ${sha}.\n\nWindows x64: EXE\nLinux x64 (X11/XWayland): AppImage and DEB\nmacOS Apple Silicon: DMG and ZIP\n\nUnsigned builds: Windows signing and Apple Developer ID/notarization are not configured.\nWindow tracking and desktop automation remain Windows-only in v0.1.\n\nIn-app updates read latest.yml, latest-linux.yml and latest-mac.yml (sha512 of each installer) from the latest published release: publishing this draft offers it to installed copies. These notes are shown in the app as plain text.\n\nVerify SHA256SUMS.txt and test installers before publishing.`,
+    body: `${fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8').trim() : `Cross-platform Capri ${version} build. See the repository documentation for platform limitations.`}\n\nBuild commit: ${sha}\n`,
   };
 }
 

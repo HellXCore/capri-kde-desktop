@@ -32,7 +32,7 @@ jobs:
             script: dist:linux
             executable: dist/linux-unpacked/capri-desktop
           - platform: macos-arm64
-            runner: macos-15
+            runner: macos-26
             script: dist:mac
             executable: dist/mac-arm64/Capri.app/Contents/MacOS/Capri
     steps:
@@ -54,6 +54,11 @@ jobs:
         run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # mac.identity is explicitly '-' (ad-hoc); no certificate or signing secret is used.
+          CSC_FOR_PULL_REQUEST: ${{ runner.os == 'macOS' && 'true' || 'false' }}
+      - name: Verify distributed macOS signatures
+        if: runner.os == 'macOS'
+        run: npm run verify:mac
       - name: Launch packaged app (Windows)
         if: runner.os == 'Windows'
         run: node scripts/smoke-test.js "${{ matrix.executable }}"
