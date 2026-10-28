@@ -102,13 +102,21 @@ async function boot() {
 
   // Sync interactive window areas on Linux (XWayland)
   let shapeRaf = 0;
+  let isDraggingShape = false;
+
   const updateShapes = () => {
     shapeRaf = 0;
     if (config.platform !== 'linux') return;
+    
     if (capri.dragging) {
-      host.setShape([]); // the entire screen is interactive during dragging
+      if (!isDraggingShape) {
+        isDraggingShape = true;
+        host.setShape([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]);
+      }
       return;
     }
+    isDraggingShape = false;
+
     const rects = [];
 
     // 1. Capri’s Body

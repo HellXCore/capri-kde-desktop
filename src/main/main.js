@@ -902,16 +902,19 @@ function registerIpc() {
   ipcMain.on('overlay:shape', (_e, rects) => {
     if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
     if (!rects || rects.length === 0) {
-      overlay.setShape([]); // mask reset (the entire screen is interactive, for example during dragging)
+      // On Linux, setShape([]) crops the window to 0 pixels (an Electron bug).
+      // To reset the mask to cover the entire screen, we set the window to its full size:
+      const b = overlay.getBounds();
+      overlay.setShape([{ x: 0, y: 0, width: b.width, height: b.height }]);
     } else {
       const valid = rects
-        .map((r) => ({
-          x: Math.round(r.x),
-          y: Math.round(r.y),
-          width: Math.max(1, Math.round(r.width)),
-          height: Math.max(1, Math.round(r.height)),
-        }))
-        .filter((r) => r.width > 0 && r.height > 0);
+      .map((r) => ({
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        width: Math.max(1, Math.round(r.width)),
+        height: Math.max(1, Math.round(r.height)),
+      }))
+      .filter((r) => r.width > 0 && r.height > 0);
       overlay.setShape(valid.length > 0 ? valid : [{ x: -100, y: -100, width: 1, height: 1 }]);
     }
   });
