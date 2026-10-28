@@ -6,7 +6,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const packaged = process.argv[2];
+const args = process.argv.slice(2);
+const packaged = args.find((a) => !a.startsWith('--'));
+// macOS package: its window helper found and running (windows.js logs it)
+const expectWindows = args.includes('--expect-window-tracking');
 const executable = packaged ? path.resolve(packaged) : require('electron');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-'));
 const env = { ...process.env, CAPRI_SMOKE_DATA: data };
@@ -16,12 +19,14 @@ const child = spawn(executable, [...(packaged ? [] : [root]), '--smoke-test'], {
 });
 let ready = false;
 let settings = false; // her settings window opened, came back once, and closed on Escape
+let windows = false;
 let out = '';
 child.stdout.on('data', (chunk) => {
   process.stdout.write(chunk);
   out += String(chunk);
   if (out.includes('[capri] smoke ready:')) ready = true;
   if (out.includes('[capri] smoke settings: ok')) settings = true;
+  if (out.includes('[capri] window tracking: on')) windows = true;
 });
 child.stderr.pipe(process.stderr);
 const timer = setTimeout(() => { console.error('Smoke process did not exit'); child.kill('SIGKILL'); }, 45000);
@@ -29,8 +34,8 @@ child.on('error', (err) => { console.error(err); process.exitCode = 1; clearTime
 child.on('close', (code) => {
   clearTimeout(timer);
   fs.rmSync(data, { recursive: true, force: true });
-  if (code !== 0 || !ready || !settings) {
-    console.error(`Smoke failed: exit=${code}, rendererReady=${ready}, settingsWindow=${settings}`);
+  if (code !== 0 || !ready || !settings || (expectWindows && !windows)) {
+    console.error(`Smoke failed: exit=${code}, rendererReady=${ready}, settingsWindow=${settings}${expectWindows ? `, windowTracking=${windows}` : ''}`);
     process.exitCode = 1;
   }
 });

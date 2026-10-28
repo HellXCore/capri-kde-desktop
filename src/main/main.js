@@ -272,6 +272,10 @@ const DEMO_TERMINAL = `<body style="margin:0;background:#14101c;color:#8f8aa3;fo
 <div style="color:#36ff7a">&nbsp;&nbsp;&nbsp;&nbsp;✓ paginates with a cursor</div><div style="color:#36ff7a">&nbsp;&nbsp;&nbsp;&nbsp;✓ rejects a bad cursor</div>
 <div>&nbsp;&nbsp;6 passing (212ms)</div><div style="color:#36ff7a">PS C:\\night-city-api&gt; _</div></body>`;
 
+// Her demo and --dev test windows stay on top, except on macOS: a window above the normal level is
+// not one the helper reports as a perch (mac/window-watch.js), and showInactive() brings it up anyway.
+const PERCH_ON_TOP = process.platform !== 'darwin';
+
 function demoWindow(open) {
   demoWin?.destroy();
   demoWin = null;
@@ -279,7 +283,7 @@ function demoWindow(open) {
   const b = overlay.getBounds();
   demoWin = new BrowserWindow({
     x: Math.round(b.x + b.width * 0.5 - 310), y: Math.round(b.y + b.height * 0.42), width: 620, height: 300,
-    show: false, alwaysOnTop: true, title: 'night-city-api — npm test', backgroundColor: '#14101c', autoHideMenuBar: true,
+    show: false, alwaysOnTop: PERCH_ON_TOP, title: 'night-city-api — npm test', backgroundColor: '#14101c', autoHideMenuBar: true,
   });
   demoWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(DEMO_TERMINAL)}`);
   demoWin.once('ready-to-show', () => demoWin?.showInactive());
@@ -1057,7 +1061,7 @@ async function debugHandler(route, body) {
       const b = overlay.getBounds();
       const win = new BrowserWindow({
         x: b.x + (body.x ?? 300), y: b.y + (body.y ?? 380), width: body.w ?? 720, height: body.h ?? 380,
-        show: false, alwaysOnTop: true, title: `Capri test window ${id}`, backgroundColor: '#1b1726',
+        show: false, alwaysOnTop: PERCH_ON_TOP, title: `Capri test window ${id}`, backgroundColor: '#1b1726',
       });
       win.loadURL('data:text/html,<body style="background:%231b1726"></body>');
       win.showInactive();

@@ -343,13 +343,13 @@ test('watcher: failures in a row only count until a poll works again', async () 
 
 // ---- windows.js: the Linux path goes by the session, the Windows one is unchanged ----
 
-function loadWindows(platform, { spawn, setTimeout: later = setTimeout } = {}) {
+function loadWindows(platform, { spawn, setTimeout: later = setTimeout, clearTimeout: cancel = clearTimeout } = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main/windows.js');
   const spawned = [];
   const electron = { screen: { getAllDisplays: () => [], screenToDipRect: (_w, r) => r } };
   const context = {
-    module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout: later, clearTimeout,
+    module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout: later, clearTimeout: cancel,
     process: { platform, env: {}, pid: 1 },
     require(id) {
       if (id === 'electron') return electron;
@@ -448,4 +448,44 @@ test('windows.js on Windows: stop() kills the helper and does not restart it', (
   watch.stop();
   assert.equal(child.killed, 1);
   assert.equal(later.length, 0);
+});
+
+test('windows.js on Windows: stop() while a restart is pending cancels it', () => {
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const timers = new Map();
+  let next = 1;
+  const children = [];
+  const { windows } = loadWindows('win32', {
+    spawn: () => {
+      const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+      child.kill = () => {};
+      children.push(child);
+      return child;
+    },
+    setTimeout: (fn) => { timers.set(next, fn); return next++; },
+    clearTimeout: (id) => timers.delete(id),
+  });
+  const watch = windows.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  children[0].emit('close'); // the helper died: a restart is due in 3 s
+  assert.equal(timers.size, 1);
+  watch.stop();
+  assert.equal(timers.size, 0);
+  // and a restart that fires anyway (already queued) starts nothing
+  const { windows: w2 } = loadWindows('win32', {
+    spawn: () => {
+      const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+      child.kill = () => {};
+      children.push(child);
+      return child;
+    },
+    setTimeout: (fn) => { timers.set(next, fn); return next++; },
+    clearTimeout() {},
+  });
+  const again = w2.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  children.at(-1).emit('close');
+  again.stop();
+  const count = children.length;
+  [...timers.values()].forEach((fn) => fn());
+  assert.equal(children.length, count);
 });
