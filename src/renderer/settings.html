@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capri</title>
+  <link rel="stylesheet" href="styles/settings.css">
+</head>
+<body>
+  <div class="settings">
+    <header class="settings__head">
+      <img class="settings__face" src="../../assets/capri/capri-face.png" alt="">
+      <h1 class="settings__title" id="title">Capri</h1>
+    </header>
+    <nav class="settings__nav">
+      <div class="settings__tabs" id="tabs" role="tablist" aria-orientation="vertical"></div>
+    </nav>
+    <main class="settings__main" id="panels"></main>
+    <footer class="settings__foot">
+      <button class="settings__button" id="close" type="button"></button>
+    </footer>
+  </div>
+  <script type="module" src="js/settings.js"></script>
+</body>
+</html>

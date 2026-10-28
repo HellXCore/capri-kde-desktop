@@ -16,6 +16,8 @@ const lang = require('./lang');
 const { createBridge } = require('./bridge');
 const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { createCapabilities } = require('./capabilities');
+const { createSettingsWindow } = require('./settings-window');
+const { settingsView } = require('./settings-view');
 const llm = require('./llm');
 const ollama = require('./ollama');
 const setup = require('./setup');
@@ -52,6 +54,7 @@ protocol.registerSchemesAsPrivileged([
 let overlay = null;
 let tray = null;
 let trayMenu = null; // also what she opens when you right-click her
+let settings = null; // her settings window (settings-window.js), made in main()
 let demoTimer = null;
 let windowWatch = null;
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
@@ -299,6 +302,31 @@ function rendererConfig() {
   return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: lang.langSetting(cfg.lang, LANGS), floorGap: overlayArea().gap, caps: caps.forRenderer() };
 }
 
+// What her settings window shows (settings-view.js), from the config and what's known here.
+function settingsFacts() {
+  const cfg = config.load();
+  const screens = displays();
+  const current = targetDisplay();
+  return {
+    cfg,
+    lang: resolveLang(cfg.lang),
+    langSetting: lang.langSetting(cfg.lang, LANGS),
+    autoLang: resolveLang('auto'),
+    assistant: cfg.claude ? activeAssistant() : null,
+    hooksInstalled: cfg.claude ? Boolean(activeHooks().status().installed) : false,
+    provider: llm.PROVIDERS[cfg.provider]?.label || cfg.provider,
+    model: pickModel(cfg),
+    features: caps.all(),
+    autostart: caps.has('autostart') && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+    screen: { index: Math.max(0, screens.findIndex((d) => d.id === current.id)), count: screens.length, width: current.size.width, height: current.size.height },
+    about: { version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron, session: caps.session },
+  };
+}
+
+function openSettings() {
+  settings?.open();
+}
+
 function updateConfig(patch) {
   config.save(patch);
   if ('rest' in patch) {
@@ -355,6 +383,7 @@ function rebuildTray() {
     },
     { label: t.custom, click: () => sendCommand('customize') },
     { label: cfg.visible ? t.hide : t.show, accelerator: 'Ctrl+Alt+C', click: () => toggleVisible() },
+    { label: t.settings, click: openSettings },
     { type: 'separator' },
     {
       label: t.size,
@@ -513,6 +542,7 @@ function rebuildTray() {
   ]);
   tray.setContextMenu(menu);
   trayMenu = menu;
+  settings?.update(); // what the menu shows, her settings window shows too
 }
 
 // Run from a clone (`npm start`), electron.exe alone would open the default Electron app at login:
@@ -700,7 +730,10 @@ function registerIpc() {
     if (!SMOKE) return;
     const cfg = config.load();
     console.log(`[capri] smoke ready: ${process.platform}/${process.arch} lang=${resolveLang(cfg.lang)} (${lang.langSetting(cfg.lang, LANGS)})`);
-    app.quit();
+    smokeSettings().then(() => app.quit(), (err) => {
+      console.error('[capri] smoke settings failed:', err.message);
+      app.exit(1);
+    });
   });
   ipcMain.on('overlay:interactive', (_e, on) => {
     overlay?.setIgnoreMouseEvents(!on, process.platform === 'linux' ? undefined : { forward: true });
@@ -730,6 +763,15 @@ function registerIpc() {
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcMain.handle('config:get', () => rendererConfig());
+  // her settings window (settings-preload.js): answered only for that window
+  ipcMain.handle('settings:view', (e) => (settings?.owns(e.sender) ? settingsView(settingsFacts()) : null));
+  ipcMain.on('settings:close', (e) => settings?.owns(e.sender) && settings.close());
+  ipcMain.on('settings:menu', (e) => settings?.owns(e.sender) && trayMenu?.popup({ window: settings.window() }));
+  ipcMain.on('settings:ready', (e, info) => {
+    if (!settings?.owns(e.sender)) return;
+    if (DEV || SMOKE) console.log('[capri] settings ready:', JSON.stringify(info));
+    settingsReady?.(info);
+  });
   ipcMain.handle('hooks:status', () => activeHooks().status());
   ipcMain.handle('config:set', (_e, patch) => updateConfig(patch));
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
@@ -930,6 +972,44 @@ function registerIpc() {
   });
 }
 
+// --smoke-test: her settings window opens with its sections, asking again brings back the same
+// one, Escape closes it, and the overlay is still there after.
+let settingsReady = null; // resolves the wait for the settings page to say it's up
+function waitSettingsReady(ms = 10000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('settings page never got ready')), ms);
+    settingsReady = (info) => {
+      clearTimeout(timer);
+      settingsReady = null;
+      resolve(info);
+    };
+  });
+}
+async function smokeSettings() {
+  const ready = waitSettingsReady();
+  const win = settings.open();
+  const info = await ready;
+  if (info?.sections !== 4) throw new Error(`settings shows ${info?.sections} sections`);
+  if (settings.open() !== win) throw new Error('a second settings window opened');
+  const windows = BrowserWindow.getAllWindows().length;
+  const closed = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Escape did not close the settings window')), 5000);
+    win.once('closed', () => { clearTimeout(timer); resolve(); });
+  });
+  win.webContents.focus();
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  await closed;
+  if (settings.isOpen() || !overlay || overlay.isDestroyed()) throw new Error('closing the settings touched the overlay');
+  // opened again after closing: a new window, the one before is gone
+  const again = waitSettingsReady();
+  const second = settings.open();
+  await again;
+  if (second === win) throw new Error('the closed settings window came back');
+  settings.close();
+  console.log(`[capri] smoke settings: ok (sections=${info.sections}, focus=${info.focused}, windows=${windows})`);
+}
+
 // Only in --dev: lets scripts drive the overlay and grab frames of it (no desktop content, just our window).
 const testWins = new Map(); // name -> test window
 
@@ -1023,6 +1103,30 @@ async function debugHandler(route, body) {
     }
     return { ok: true };
   }
+  if (route === 'settings') {
+    // her settings window: { open: true } / { open: false }, { capture: 'name' } for a picture of it
+    if (body.open === true) settings.open();
+    if (body.open === false) settings.close();
+    if (body.capture && settings.isOpen()) {
+      const image = await settings.window().webContents.capturePage();
+      const dir = path.join(app.isPackaged ? app.getPath('userData') : ROOT, 'captures');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${String(body.capture).replace(/[^\w-]/g, '')}.png`);
+      fs.writeFileSync(file, image.toPNG());
+      return { ok: true, file };
+    }
+    if (Array.isArray(body.size) && settings.isOpen()) settings.window().setSize(...body.size.map(Number)); // [width, height]
+    if (body.key && settings.isOpen()) {
+      // a key pressed in it ({ key: 'Tab', shift: true }), the real keyboard untouched
+      const contents = settings.window().webContents;
+      const modifiers = body.shift ? ['shift'] : [];
+      contents.sendInputEvent({ type: 'keyDown', keyCode: String(body.key), modifiers });
+      contents.sendInputEvent({ type: 'keyUp', keyCode: String(body.key), modifiers });
+      return { ok: true };
+    }
+    if (body.js && settings.isOpen()) return { ok: true, value: await settings.window().webContents.executeJavaScript(String(body.js)) };
+    return { ok: true, value: settings.isOpen() };
+  }
   if (route === 'capture') {
     const image = await overlay.webContents.capturePage();
     // installed, the app's own folder is read-only: its data folder instead
@@ -1063,6 +1167,15 @@ function main() {
     if (process.platform === 'darwin') app.dock?.hide();
     serveProtocol();
     registerIpc();
+    settings = createSettingsWindow({
+      BrowserWindow,
+      preload: path.join(__dirname, '..', 'settings-preload.js'),
+      url: 'capri://app/src/renderer/settings.html',
+      view: () => settingsView(settingsFacts()),
+      area: () => targetDisplay().workArea,
+      // no Dock icon on macOS: the app has to come forward for its window to get the keyboard
+      focusApp: () => process.platform === 'darwin' && app.focus({ steal: true }),
+    });
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it

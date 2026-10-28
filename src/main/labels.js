@@ -27,6 +27,7 @@ const TRAY = {
     pcReact: 'Réagir à mon PC',
     cloudFree: 'gratuit, en ligne', cloudSignin: 'Me connecter à Ollama (modèles cloud gratuits)…',
     unavailable: 'indisponible sur ce système',
+    settings: 'Réglages…',
   },
   en: {
     name: 'English',
@@ -51,6 +52,7 @@ const TRAY = {
     pcReact: 'React to my PC',
     cloudFree: 'free, online', cloudSignin: 'Sign in to Ollama (free cloud models)…',
     unavailable: 'not available on this system',
+    settings: 'Settings…',
   },
   es: {
     name: 'Español',
@@ -74,6 +76,7 @@ const TRAY = {
     pcReact: 'Reaccionar a mi PC',
     cloudFree: 'gratis, en línea', cloudSignin: 'Conectarme a Ollama (modelos en la nube gratis)…',
     unavailable: 'no disponible en este sistema',
+    settings: 'Ajustes…',
   },
   pt: {
     name: 'Português (Brasil)',
@@ -97,6 +100,7 @@ const TRAY = {
     pcReact: 'Reagir ao meu PC',
     cloudFree: 'grátis, online', cloudSignin: 'Entrar no Ollama (modelos na nuvem grátis)…',
     unavailable: 'indisponível neste sistema',
+    settings: 'Configurações…',
   },
   ru: {
     name: 'Русский',
@@ -121,7 +125,58 @@ const TRAY = {
     pcReact: 'Реагировать на мой ПК',
     cloudFree: 'бесплатно, онлайн', cloudSignin: 'Войти в Ollama (бесплатные облачные модели)…',
     unavailable: 'недоступно в этой системе',
+    settings: 'Настройки…',
   },
 };
 
-module.exports = { TRAY, LANGS: Object.keys(TRAY) };
+// Her settings window (settings-view.js builds what it shows from these and TRAY). Plain strings
+// only: they travel to the window as they are.
+const SETTINGS = {
+  fr: {
+    title: 'Capri — Réglages', nav: 'Sections des réglages',
+    general: 'Général', behavior: 'Comportement', ai: 'Assistant et IA', about: 'À propos',
+    readOnly: 'Pour l’instant, ces réglages se changent dans son menu. Ici, tu vois où ils en sont.',
+    openMenu: 'Ouvrir son menu', close: 'Fermer',
+    on: 'Oui', off: 'Non', none: '—',
+    provider: 'Qui répond dans son chat', model: 'Modèle', hooks: 'Hooks',
+    version: 'Version', system: 'Système', electron: 'Electron', license: 'Licence',
+  },
+  en: {
+    title: 'Capri — Settings', nav: 'Settings sections',
+    general: 'General', behavior: 'Behavior', ai: 'Assistant & AI', about: 'About',
+    readOnly: 'For now these settings are changed in her menu. This shows where they stand.',
+    openMenu: 'Open her menu', close: 'Close',
+    on: 'On', off: 'Off', none: '—',
+    provider: 'Who answers her chat', model: 'Model', hooks: 'Hooks',
+    version: 'Version', system: 'System', electron: 'Electron', license: 'License',
+  },
+  es: {
+    title: 'Capri — Ajustes', nav: 'Secciones de ajustes',
+    general: 'General', behavior: 'Comportamiento', ai: 'Asistente e IA', about: 'Acerca de',
+    readOnly: 'Por ahora estos ajustes se cambian en su menú. Aquí ves cómo están.',
+    openMenu: 'Abrir su menú', close: 'Cerrar',
+    on: 'Sí', off: 'No', none: '—',
+    provider: 'Quién responde en su chat', model: 'Modelo', hooks: 'Hooks',
+    version: 'Versión', system: 'Sistema', electron: 'Electron', license: 'Licencia',
+  },
+  pt: {
+    title: 'Capri — Configurações', nav: 'Seções das configurações',
+    general: 'Geral', behavior: 'Comportamento', ai: 'Assistente e IA', about: 'Sobre',
+    readOnly: 'Por enquanto essas configurações mudam no menu dela. Aqui você vê como estão.',
+    openMenu: 'Abrir o menu dela', close: 'Fechar',
+    on: 'Sim', off: 'Não', none: '—',
+    provider: 'Quem responde no chat dela', model: 'Modelo', hooks: 'Hooks',
+    version: 'Versão', system: 'Sistema', electron: 'Electron', license: 'Licença',
+  },
+  ru: {
+    title: 'Capri — Настройки', nav: 'Разделы настроек',
+    general: 'Общие', behavior: 'Поведение', ai: 'Ассистент и ИИ', about: 'О программе',
+    readOnly: 'Пока эти настройки меняются в её меню. Здесь видно, как они выставлены сейчас.',
+    openMenu: 'Открыть её меню', close: 'Закрыть',
+    on: 'Вкл.', off: 'Выкл.', none: '—',
+    provider: 'Кто отвечает в её чате', model: 'Модель', hooks: 'Хуки',
+    version: 'Версия', system: 'Система', electron: 'Electron', license: 'Лицензия',
+  },
+};
+
+module.exports = { TRAY, SETTINGS, LANGS: Object.keys(TRAY) };
