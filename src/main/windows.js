@@ -57,7 +57,7 @@ function startLinuxWatch({ overlay, onUpdate, onState, session }) {
   const feed = createFeed({ overlay, onUpdate, toDip: (win) => x11.pxToDip(win, screen.getAllDisplays()) });
   const watch = startX11Watch({
     session,
-    self: { id: x11.selfXid(overlay.getNativeWindowHandle()), pid: process.pid },
+    self: { id: x11.selfXid(overlay.getNativeWindowHandle()) },
     onSnapshot: feed.push,
     onState,
   });

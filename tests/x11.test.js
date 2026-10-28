@@ -144,16 +144,40 @@ test('snapshot: other workspaces, sticky windows, minimized ones, own pid, panel
   infos.set(0x1e00004, { ...infos.get(0x1e00004), desktop: x11.ALL_DESKTOPS });
   const sticky = x11.buildSnapshot({ root: { ...x11.parseRoot(ROOT), desktop: 2 }, infos, rects });
   assert.deepEqual(sticky.wins.map((w) => w.id), [0x1e00004]);
-  // overlay recognised by pid when its id is unknown (it skips the taskbar anyway)
-  infos.set(0x4400002, { ...infos.get(0x4400002), state: [] });
-  const own = x11.buildSnapshot({ root: x11.parseRoot(ROOT), infos, rects, self: { id: null, pid: 4242 } });
+  // the overlay left out by its id even listed in the taskbar; when its id is unknown, it skips the taskbar
+  const overlayInfo = infos.get(0x4400002);
+  infos.set(0x4400002, { ...overlayInfo, state: [] });
+  const own = x11.buildSnapshot({ root: x11.parseRoot(ROOT), infos, rects, self: { id: 0x4400002 } });
   assert.equal(own.wins.some((w) => w.id === 0x4400002), false);
+  infos.set(0x4400002, overlayInfo);
+  assert.equal(x11.buildSnapshot({ root: x11.parseRoot(ROOT), infos, rects, self: { id: null } })
+    .wins.some((w) => w.id === 0x4400002), false);
   // the panel clicked: in front, never a seat
   const panel = x11.buildSnapshot({ root: { ...x11.parseRoot(ROOT), active: 0x2c00001 }, infos, rects });
   assert.equal(panel.taskbar, true);
   assert.equal(panel.wins.some((w) => w.id === 0x2c00001), false);
   // nothing known about the window in front (it closed meanwhile)
   assert.equal(x11.buildSnapshot({ root: { ...x11.parseRoot(ROOT), active: 0x7 }, infos, rects }).taskbar, false);
+});
+
+test('snapshot: her other windows (the demo terminal, same pid) are seats, as on Windows', () => {
+  const infos = parsedInfos();
+  const rects = x11.parseTree(TREE);
+  // the demo terminal: another window of Capri's process, on top
+  infos.set(0x2400006, { ...infos.get(0x2400006), state: ['ABOVE'], pid: 4242 });
+  const snap = x11.buildSnapshot({ root: x11.parseRoot(ROOT), infos, rects, self: { id: 0x4400002, pid: 4242 } });
+  assert.deepEqual(snap.wins.map((w) => w.id), [0x3a00007, 0x2400006, 0x1e00004]);
+});
+
+test('window type: the first standard EWMH type, vendor types before it skipped', () => {
+  // Qt frameless windows: _KDE_NET_WM_WINDOW_TYPE_OVERRIDE first, then NORMAL
+  const qt = x11.parseWindow('_NET_WM_WINDOW_TYPE(ATOM) = _KDE_NET_WM_WINDOW_TYPE_OVERRIDE, _NET_WM_WINDOW_TYPE_NORMAL\n');
+  assert.deepEqual(qt.types, ['NORMAL']);
+  assert.equal(x11.isSeat({ ...qt, state: [], desktop: null }, { desktop: 0 }), true);
+  const dock = x11.parseWindow('_NET_WM_WINDOW_TYPE(ATOM) = _KDE_NET_WM_WINDOW_TYPE_OVERRIDE, _NET_WM_WINDOW_TYPE_DOCK\n');
+  assert.equal(x11.isSeat({ ...dock, state: [], desktop: null }, { desktop: 0 }), false);
+  // only a vendor type: no standard type, a normal window (EWMH)
+  assert.deepEqual(x11.parseWindow('_NET_WM_WINDOW_TYPE(ATOM) = _KDE_NET_WM_WINDOW_TYPE_OVERRIDE\n').types, []);
 });
 
 test('pixels to DIPs: scale factor, second screen, no displays', () => {
@@ -271,19 +295,65 @@ test('watcher: a window closing between the two calls is left out, not fatal', a
   watch.stop();
 });
 
+test('watcher: stopped during a poll, nothing more is sent nor scheduled', async () => {
+  const snaps = [];
+  const states = [];
+  const timer = manual();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const tools = fakeTools();
+  const watch = startX11Watch({
+    session: 'x11', timer, log: quiet, onState: (ok) => states.push(ok), onSnapshot: (s) => snaps.push(s),
+    run: async (cmd, args) => { await gate; return tools(cmd, args); },
+  });
+  watch.stop();
+  release();
+  await settle();
+  await settle();
+  assert.deepEqual(snaps, []);
+  assert.deepEqual(states, []);
+  assert.equal(timer.queue.length, 0);
+});
+
+test('watcher: failures in a row only count until a poll works again', async () => {
+  const states = [];
+  const timer = manual();
+  let fail = GIVE_UP - 1;
+  const tools = fakeTools();
+  startX11Watch({
+    session: 'x11', timer, log: quiet, onSnapshot() {}, onState: (ok) => states.push(ok),
+    run: async (cmd, args) => {
+      if (cmd === 'xwininfo' && fail-- > 0) throw new Error('timed out');
+      return tools(cmd, args);
+    },
+  });
+  for (let i = 0; i < GIVE_UP; i++) {
+    await settle();
+    timer.queue.shift()?.();
+  }
+  fail = GIVE_UP - 1;
+  for (let i = 0; i < GIVE_UP - 1; i++) {
+    await settle();
+    timer.queue.shift()?.();
+  }
+  await settle();
+  assert.deepEqual(states, [true]);
+  assert.equal(timer.queue.length, 1);
+});
+
 // ---- windows.js: the Linux path goes by the session, the Windows one is unchanged ----
 
-function loadWindows(platform) {
+function loadWindows(platform, { spawn, setTimeout: later = setTimeout } = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main/windows.js');
   const spawned = [];
   const electron = { screen: { getAllDisplays: () => [], screenToDipRect: (_w, r) => r } };
   const context = {
-    module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout, clearTimeout,
+    module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout: later, clearTimeout,
     process: { platform, env: {}, pid: 1 },
     require(id) {
       if (id === 'electron') return electron;
-      if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); throw new Error('spawned'); } };
+      if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); if (spawn) return spawn(...a); throw new Error('spawned'); } };
       return require(id);
     },
   };
@@ -315,4 +385,67 @@ test('feed: physical pixels to the overlay, only what overlaps her screen', () =
   assert.equal(got[0].taskbar, false);
   feed.send();
   assert.equal(got.length, 2);
+});
+
+test('windows.js on Windows: the helper\'s lines to the overlay, restarts, then gives up (unchanged by createFeed)', async () => {
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const children = [];
+  const later = [];
+  const { windows, spawned } = loadWindows('win32', {
+    spawn: () => {
+      const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), killed: 0 });
+      child.kill = () => { child.killed++; };
+      children.push(child);
+      return child;
+    },
+    setTimeout: (fn) => later.push(fn),
+  });
+  const handle = Buffer.alloc(8);
+  handle.writeBigUInt64LE(0x1234n);
+  const overlay = { getNativeWindowHandle: () => handle, isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 1920, height: 1040 }) };
+  const states = [];
+  const got = [];
+  const watch = windows.startWindowWatch({ overlay, onUpdate: (d) => got.push(d), onState: (ok) => states.push(ok) });
+  assert.equal(spawned[0][0], 'powershell.exe');
+  assert.equal(spawned[0][1].slice(-2).join(' '), '4660 1'); // her hwnd, her pid
+  children[0].stdout.write('not json\n');
+  children[0].stdout.write(`${JSON.stringify({ fg: 7, taskbar: true, ai: ['chatgpt'], wins: [{ id: 7, x: 10, y: 20, w: 800, h: 600, max: false }] })}\n`);
+  await settle();
+  assert.deepEqual(states, [true]);
+  assert.equal(got.length, 1);
+  assert.equal(JSON.stringify(got[0]), JSON.stringify({
+    fg: 7, taskbar: true, ai: ['chatgpt'], game: null, usb: [], plug: null, wins: [{ id: 7, x: 10, y: 20, w: 800, h: 600, max: false }],
+  }));
+  watch.refresh();
+  assert.equal(got.length, 2);
+  // the helper dies: three restarts 3 s apart, then tracking off
+  for (let i = 0; i < 3; i++) {
+    children[i].emit('close');
+    assert.equal(later.length, i + 1);
+    later[i]();
+  }
+  children[3].emit('close');
+  assert.deepEqual(states, [true, false]);
+  watch.stop();
+  assert.equal(children[3].killed, 0); // already gone (child is null)
+});
+
+test('windows.js on Windows: stop() kills the helper and does not restart it', () => {
+  const { EventEmitter } = require('node:events');
+  const { PassThrough } = require('node:stream');
+  const later = [];
+  let child;
+  const { windows } = loadWindows('win32', {
+    spawn: () => {
+      child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), killed: 0 });
+      child.kill = () => { child.killed++; child.emit('close'); };
+      return child;
+    },
+    setTimeout: (fn) => later.push(fn),
+  });
+  const watch = windows.startWindowWatch({ overlay: { getNativeWindowHandle: () => Buffer.alloc(8) }, onUpdate() {} });
+  watch.stop();
+  assert.equal(child.killed, 1);
+  assert.equal(later.length, 0);
 });
