@@ -437,9 +437,10 @@ async function boot() {
     const shown = panel.say({
       kind: 'remind', face: 'look', line, quote: missed ? '' : fmt(t.asked, { time }), actions, onAction, hold: null,
       // closed without an answer: seen, if it was up long enough to read; else back in a couple of minutes
-      onLeave: () => {
+      // (unseen: kept while your screen was locked and replaced before it went up: panel.js)
+      onLeave: (how) => {
         if (answered) return;
-        if (performance.now() - shownAt > 2500) reminders.remove(r.id);
+        if (!how?.unseen && performance.now() - shownAt > 2500) reminders.remove(r.id);
         else reminders.snooze(r.id, 2 * 60 * 1000);
       },
     });
