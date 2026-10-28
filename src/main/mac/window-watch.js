@@ -64,16 +64,22 @@ function overlayWindowId(overlay) {
   }
 }
 
-function startMacWindowWatch({ overlay, onUpdate, helper = HELPER, spawn = nodeSpawn, log = console.error, excludeOwnProcess = false }) {
+// onState(ok), as in ../windows.js: the helper runs (true, on its first snapshot), or is missing or
+// gave up after its restarts (false): capabilities.js
+function startMacWindowWatch({
+  overlay, onUpdate, onState = () => {}, helper = HELPER, spawn = nodeSpawn, log = console.error, excludeOwnProcess = false,
+}) {
   const idle = { available: false, stop() {}, refresh() {} };
   if (!fs.existsSync(helper)) {
     log('[capri] window watch: macOS helper not built, windows are not tracked');
+    onState(false);
     return idle; // she keeps the screen floor and the corners: the base overlay
   }
 
   let child = null;
   let stopped = false;
   let restarts = 0;
+  let retry = null; // the pending restart, cancelled by stop()
   let last = null; // the helper's last snapshot: it only speaks when something changes
 
   const send = () => {
@@ -82,26 +88,38 @@ function startMacWindowWatch({ overlay, onUpdate, helper = HELPER, spawn = nodeS
   };
 
   const start = () => {
+    retry = null;
+    if (stopped) return;
     const startedAt = Date.now();
+    let running = false;
     const args = ['--parent', String(process.pid), '--watch-stdin'];
     const self = overlayWindowId(overlay);
     if (self) args.push('--self-window', String(self));
     // her other windows (chat, setup) are fair perches on Windows too; skipping them is optional
     if (excludeOwnProcess) args.push('--exclude-pid', String(process.pid));
-    child = spawn(helper, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    readline.createInterface({ input: child.stdout }).on('line', (line) => {
+    const proc = spawn(helper, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    child = proc;
+    readline.createInterface({ input: proc.stdout }).on('line', (line) => {
+      if (stopped) return; // lines still buffered when she stopped it
       const snap = parseLine(line);
       if (!snap) return;
+      if (!running) {
+        running = true;
+        onState(true);
+      }
       last = snap;
       send();
     });
-    child.stderr.on('data', (d) => log('[capri] window watch:', String(d).trim()));
-    child.on('error', (err) => log('[capri] window watch:', err.message));
-    child.on('exit', () => {
-      child = null;
+    proc.stderr.on('data', (d) => log('[capri] window watch:', String(d).trim()));
+    // not executable (EACCES), gone: no 'exit' then, only 'close'
+    proc.on('error', (err) => log('[capri] window watch:', err.message));
+    proc.on('close', () => {
+      if (child === proc) child = null;
+      if (stopped) return;
       // a helper that ran a good while earns its restarts back; one that keeps dying stops after 3
       if (Date.now() - startedAt > 60000) restarts = 0;
-      if (!stopped && restarts++ < 3) setTimeout(start, 3000);
+      if (restarts++ < 3) retry = setTimeout(start, 3000);
+      else onState(false);
     });
   };
 
@@ -110,6 +128,8 @@ function startMacWindowWatch({ overlay, onUpdate, helper = HELPER, spawn = nodeS
     available: true,
     stop() {
       stopped = true;
+      clearTimeout(retry);
+      retry = null;
       child?.kill();
     },
     // her window moved (another screen): the same windows, from there

@@ -15,8 +15,8 @@
 | Файл | Назначение |
 |---|---|
 | `src/main/mac/capri-windows.swift` | helper: печатает JSON-строку при каждом изменении |
-| `src/main/mac/window-watch.js` | адаптер: `startMacWindowWatch({ overlay, onUpdate })` с тем же контрактом, что `startWindowWatch()`, плюс чистые `parseLine()` и `toUpdate()` |
-| `tests/mac-window-watch.test.js` | тесты парсинга, нормализации, фильтра overlay, отказа helper и ограничения перезапусков (`npm test`, на любой ОС) |
+| `src/main/mac/window-watch.js` | адаптер: `startMacWindowWatch({ overlay, onUpdate, onState })` с тем же контрактом, что `startWindowWatch()` (`onState(true)` на первом снимке helper, `onState(false)`, если helper нет или он упал больше трёх раз подряд), плюс чистые `parseLine()` и `toUpdate()` |
+| `tests/mac-window-watch.test.js` | тесты парсинга, нормализации, фильтра overlay, отказа helper (нет файла, нет прав на запуск), `onState`, ограничения перезапусков, `stop()` во время ожидания перезапуска и склейки строки JSON из нескольких чанков stdout (`npm test`, на любой ОС) |
 | `scripts/mac-window-scenario.js` | реальный сценарий на Mac: свои тестовые окна, перемещение, сворачивание, закрытие, полный экран |
 | `tools/mac-window-fixture.swift` | тестовые окна для сценария, управляются через stdin |
 | `scripts/mac-window-probe.js` | проверка внутри Electron: дисплеи Electron против helper, фильтрация настоящего BrowserWindow |
@@ -34,7 +34,7 @@
 | `osascript` / System Events | Accessibility + Automation | Отклонён: два запроса разрешений, медленно (сотни миллисекунд на вызов). |
 | Приватные CGS/SkyLight API | нет | Отклонены: недокументированы, ломаются между версиями macOS, риск при нотаризации. |
 
-Почему отдельный процесс на Swift, а не модуль внутри Electron: helper не зависит от ABI Node/Electron. Его падение не затрагивает приложение, адаптер просто остаётся без данных. Схема совпадает с уже принятой для Windows (отдельный процесс, построчный JSON, перезапуск не больше трёх раз). `swiftc` входит в Xcode Command Line Tools, бинарник получается около 95 КБ и использует только системные фреймворки.
+Почему отдельный процесс на Swift, а не модуль внутри Electron: helper не зависит от ABI Node/Electron. Его падение не затрагивает приложение, адаптер просто остаётся без данных. Схема совпадает с уже принятой для Windows (отдельный процесс, построчный JSON, перезапуск не больше трёх раз). `swiftc` входит в Xcode Command Line Tools, бинарник получается около 95–125 КБ (зависит от версии Swift) и использует только системные фреймворки.
 
 ## Разрешения
 
@@ -120,11 +120,11 @@ npx electron scripts/mac-window-probe.js 10   # внутри Electron: дисп�
 - Собирать helper на macOS-раннере CI перед `electron-builder --mac`, а не хранить бинарник в git.
 - Класть его в `src/main/mac/bin/` и добавить `src/main/mac/bin/**` в `asarUnpack`. Адаптер уже заменяет путь `app.asar` на `app.asar.unpacked`, как это делает `windows.js`.
 - electron-builder подписывает исполняемые файлы внутри бандла с hardened runtime. Entitlements helper не нужны. Проверить подпись (`codesign -dv`) и нотаризацию на упакованном `.app`.
-- Пока helper не собран, адаптер возвращает `{ available:false }`, а `onUpdate` не вызывается: базовый overlay работает как раньше. Локальная сборка без helper не ломается. Учесть, что `files: src/**` возьмёт в пакет и `.swift`-исходник, и локально собранный бинарник (внутрь asar, где он не исполняется).
+- Пока helper не собран, адаптер возвращает `{ available:false }` и вызывает `onState(false)`, а `onUpdate` не вызывается: базовый overlay работает как раньше. Локальная сборка без helper не ломается. Учесть, что `files: src/**` возьмёт в пакет и `.swift`-исходник, и локально собранный бинарник (внутрь asar, где он не исполняется).
 
 ## Что проверено
 
-- `npm test`: 17 тестов, все проходят, из них 6 новых для адаптера.
+- `npm test`: все проходят, из них 10 тестов адаптера (`tests/mac-window-watch.test.js`).
 - `node scripts/mac-window-scenario.js` на разблокированной машине: 23/23 без ошибок. Совпадение дисплеев с NSScreen, точные рамки после анимации, отрицательный x, z-порядок, `fg` при открытии и переключении, перемещение, сворачивание и развёртывание, Cmd-H, `orderOut`, закрытие, полный экран (свой Space, `full`/`max`, остальные окна скрыты) и выход из него, завершение приложения, выход helper по закрытию pipe. Второй дисплей: SKIP.
 - Тот же сценарий при заблокированном экране: геометрия, перемещение, сворачивание и закрытие проходят (закрытие нестабильно, см. выше); фокус и полный экран: SKIP.
 - `electron scripts/mac-window-probe.js`: дисплеи Electron и helper совпадают. Настоящее прозрачное click-through `BrowserWindow` на обычном уровне helper без фильтра видит, а адаптер через `--self-window` его отсеивает.
@@ -138,4 +138,5 @@ npx electron scripts/mac-window-probe.js 10   # внутри Electron: дисп�
 - Ручное переключение Spaces, Mission Control, Stage Manager.
 - Перетаскивание окна мышью: проверено программным `setFrame`. Частота обновлений при непрерывном перетаскивании ограничена опросом 150 мс.
 - Упакованное приложение, подпись и нотаризация helper: это CAPRI-09.
+- Смена конфигурации экранов на лету (подключение/отключение монитора, смена разрешения). Helper крутит `RunLoop.main.run()`, а не `NSApplication.run()`; рамки окон и `CGDisplayBounds` идут из CoreGraphics и всегда свежие, но `NSScreen.screens` (видимая область для `max`, `scale`) и уведомление `didChangeScreenParametersNotification` могут без цикла событий AppKit не обновиться. Проверить в CAPRI-09; при проблеме перейти на `NSApplication.run()` или брать данные дисплеев из CoreGraphics.
 - Работа с настоящим персонажем (renderer): это CAPRI-09.
