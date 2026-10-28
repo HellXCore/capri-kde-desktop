@@ -13,7 +13,8 @@ const { randomUUID } = require('node:crypto');
 const config = require('./config');
 const { TRAY, LANGS } = require('./labels');
 const { createBridge } = require('./bridge');
-const { startWindowWatch } = require('./windows');
+const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
+const { createCapabilities } = require('./capabilities');
 const llm = require('./llm');
 const ollama = require('./ollama');
 const setup = require('./setup');
@@ -24,6 +25,8 @@ const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
 const demoSteps = require('../../scripts/demo-sequence');
+// what works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
+const caps = createCapabilities({ helpers: { windowWatch: WINDOW_HELPER } });
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
@@ -268,7 +271,7 @@ const DEMO_TERMINAL = `<body style="margin:0;background:#14101c;color:#8f8aa3;fo
 function demoWindow(open) {
   demoWin?.destroy();
   demoWin = null;
-  if (!open || process.platform !== 'win32') return false;
+  if (!open || !caps.has('windowTracking')) return false;
   const b = overlay.getBounds();
   demoWin = new BrowserWindow({
     x: Math.round(b.x + b.width * 0.5 - 310), y: Math.round(b.y + b.height * 0.42), width: 620, height: 300,
@@ -294,7 +297,7 @@ function resolveLang(setting) {
 // What the overlay gets: `lang` is the resolved one, `langSetting` what the user picked.
 function rendererConfig() {
   const { apiKeys, ...cfg } = config.load(); // the keys stay here: the overlay only learns which ones are set
-  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: cfg.lang, floorGap: overlayArea().gap };
+  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: cfg.lang, floorGap: overlayArea().gap, caps: caps.forRenderer() };
 }
 
 function updateConfig(patch) {
@@ -426,8 +429,13 @@ function rebuildTray() {
       ],
     },
     { label: t.wander, type: 'checkbox', checked: cfg.wander, click: (item) => updateConfig({ wander: item.checked }) },
-    { label: t.possess, enabled: process.platform === 'win32', type: 'checkbox', checked: cfg.possess, click: (item) => updateConfig({ possess: item.checked }) },
-    { label: t.jealous, enabled: process.platform === 'win32', type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
+    {
+      label: caps.has('windowTracking') ? t.possess : `${t.possess} (${t.unavailable})`,
+      enabled: caps.has('windowTracking'), type: 'checkbox', checked: caps.has('windowTracking') && cfg.possess,
+      click: (item) => updateConfig({ possess: item.checked }),
+    },
+    // her jealousy also comes from the other assistants' hooks, not only from the window in front
+    { label: t.jealous, type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
     { label: t.pcReact, type: 'checkbox', checked: cfg.pcReact !== false, click: (item) => updateConfig({ pcReact: item.checked }) },
     {
       // she asks first (what she'll send where), then turns it on herself
@@ -486,10 +494,10 @@ function rebuildTray() {
       })),
     },
     {
-      label: t.startup,
+      label: caps.has('autostart') ? t.startup : `${t.startup} (${t.unavailable})`,
       type: 'checkbox',
-      enabled: process.platform !== 'linux',
-      checked: process.platform !== 'linux' && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+      enabled: caps.has('autostart'),
+      checked: caps.has('autostart') && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
     },
     // her hooks, while she watches Claude Code
@@ -809,7 +817,9 @@ function registerIpc() {
     return { models: setup.MODELS, cloud: free, ram: os.totalmem(), keyed: Object.keys(setup.KEY_PAGES) };
   });
   ipcMain.handle('setup:ollama', () => setup.ollamaState());
-  ipcMain.handle('setup:install', () => setup.installOllama((line) => progress({ kind: 'install', line })));
+  ipcMain.handle('setup:install', () => (caps.has('ollamaInstall')
+    ? setup.installOllama((line) => progress({ kind: 'install', line }))
+    : { ok: false, unsupported: true }));
   ipcMain.handle('setup:start', async () => {
     const res = await setup.startOllama();
     await refreshModels();
@@ -846,12 +856,14 @@ function registerIpc() {
     return { ok: false, error };
   });
   ipcMain.on('setup:keyPage', (_e, provider) => setup.KEY_PAGES[provider] && shell.openExternal(setup.KEY_PAGES[provider]));
-  ipcMain.handle('setup:launch', (_e, integration) => setup.launchThroughOllama(integration));
+  ipcMain.handle('setup:launch', (_e, integration) => (caps.has('ollamaLaunch') ? setup.launchThroughOllama(integration) : { ok: false, unsupported: true }));
   // closing an app you asked her to close, once you've clicked to confirm (apps.js)
   const appInfo = (app) => app && { name: app.process, label: app.label };
-  ipcMain.handle('apps:list', async () => (await apps.list().catch(() => [])).map(appInfo));
-  ipcMain.handle('apps:find', async (_e, wanted) => appInfo(await apps.find(wanted).catch(() => null)));
-  ipcMain.handle('apps:close', (_e, { name, force }) => apps.close(name, { force }).catch((err) => ({ error: err.message })));
+  ipcMain.handle('apps:list', async () => (caps.has('appList') ? (await apps.list().catch(() => [])).map(appInfo) : []));
+  ipcMain.handle('apps:find', async (_e, wanted) => (caps.has('appList') ? appInfo(await apps.find(wanted).catch(() => null)) : null));
+  ipcMain.handle('apps:close', (_e, { name, force }) => (caps.has('appClose')
+    ? apps.close(name, { force }).catch((err) => ({ error: err.message }))
+    : { unsupported: true }));
   // opening things you ask her to (launch.js): an app or a game, your music, a website
   ipcMain.handle('apps:findLaunch', async (_e, text) => {
     const item = await launch.find(String(text || '')).catch(() => null);
@@ -869,7 +881,7 @@ function registerIpc() {
     return shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(q)}`).then(() => true, () => false);
   });
   ipcMain.handle('apps:launch', (_e, item) => launch.launch(item).then(() => ({ ok: true }), (err) => ({ ok: false, error: err.message })));
-  ipcMain.handle('apps:media', (_e, action) => launch.media(action));
+  ipcMain.handle('apps:media', (_e, action) => (caps.has('mediaKeys') ? launch.media(action) : false));
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
   ipcMain.handle('apps:site', (_e, address) => launch.site(address).catch(() => false));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
@@ -1052,8 +1064,11 @@ function main() {
     registerIpc();
     createOverlay();
     createTray();
+    // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
+    caps.onChange(() => updateConfig({}));
     windowWatch = startWindowWatch({
       overlay,
+      onState: (ok) => caps.set('windowTracking', ok),
       onUpdate: (data) => {
         // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
         if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();

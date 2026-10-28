@@ -15,7 +15,8 @@ const { screen } = require('electron');
 // in the installed app it sits next to the app archive (asarUnpack), where PowerShell can read it
 const SCRIPT = path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 
-function startWindowWatch({ overlay, onUpdate }) {
+// onState(ok): the watcher runs (true), or gave up after its restarts (false): capabilities.js
+function startWindowWatch({ overlay, onUpdate, onState = () => {} }) {
   if (process.platform !== 'win32') return { stop() {}, refresh() {} };
 
   let child = null;
@@ -57,12 +58,16 @@ function startWindowWatch({ overlay, onUpdate }) {
       } catch {
         return;
       }
+      onState(true);
       send();
     });
     child.stderr.on('data', (d) => console.error('[capri] window watch:', String(d).trim()));
-    child.on('exit', () => {
+    child.on('error', (err) => console.error('[capri] window watch:', err.message)); // no PowerShell: 'close' follows
+    child.on('close', () => {
       child = null;
-      if (!stopped && restarts++ < 3) setTimeout(start, 3000);
+      if (stopped) return;
+      if (restarts++ < 3) setTimeout(start, 3000);
+      else onState(false);
     });
   };
 
@@ -77,4 +82,4 @@ function startWindowWatch({ overlay, onUpdate }) {
   };
 }
 
-module.exports = { startWindowWatch };
+module.exports = { startWindowWatch, SCRIPT };

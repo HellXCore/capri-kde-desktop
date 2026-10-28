@@ -90,6 +90,9 @@ export const LINES = {
       forced: '{app} : coupé net.',
       unkillable: '{app} résiste. Ferme-le toi-même depuis le Gestionnaire des tâches.',
       notFound: 'Je ne vois pas « {app} » ouvert sur ton PC.',
+      cantClose: 'Je ne sais pas encore fermer les applis sur cet ordinateur : ferme « {app} » toi-même.',
+      cantMedia: 'Je ne sais pas encore contrôler la musique sur cet ordinateur.',
+      cantLaunch: 'Je ne peux pas ouvrir « {app} » : sur cet ordinateur, j’ouvre seulement les fichiers de ton bureau, les dossiers et les sites.',
       // ouvrir une appli ou un jeu, la musique, un site
       openIt: 'Ouvrir {app}', opened: '{app} : c’est parti.', notInstalled: 'Je ne trouve pas « {app} » sur ton PC.',
       music: 'Je cherche « {song} » sur Spotify.', siteIt: 'Ouvrir {site}', siteOpened: '{site} : ouvert.',
@@ -440,6 +443,9 @@ export const LINES = {
       forced: '{app}: cut off clean.',
       unkillable: '{app} won’t go down. Close it yourself from Task Manager.',
       notFound: 'I don’t see “{app}” open on your PC.',
+      cantClose: 'I can’t close apps on this computer yet: close “{app}” yourself.',
+      cantMedia: 'I can’t control the music on this computer yet.',
+      cantLaunch: 'I can’t open “{app}”: on this computer I only open files on your desktop, folders and websites.',
       // opening an app or a game, the music, a website
       openIt: 'Open {app}', opened: '{app}: on it.', notInstalled: 'I can’t find “{app}” on your PC.',
       music: 'Looking up “{song}” on Spotify.', siteIt: 'Open {site}', siteOpened: '{site}: open.',
@@ -789,6 +795,9 @@ export const LINES = {
       forced: '{app}: cortada en seco.',
       unkillable: '{app} se resiste. Ciérrala tú desde el Administrador de tareas.',
       notFound: 'No veo «{app}» abierta en tu PC.',
+      cantClose: 'Todavía no sé cerrar apps en este ordenador: cierra «{app}» tú.',
+      cantMedia: 'Todavía no sé controlar la música en este ordenador.',
+      cantLaunch: 'No puedo abrir «{app}»: en este ordenador solo abro archivos de tu escritorio, carpetas y sitios web.',
       // abrir una app o un juego, la música, una web
       openIt: 'Abrir {app}', opened: '{app}: en marcha.', notInstalled: 'No encuentro «{app}» en tu PC.',
       music: 'Busco «{song}» en Spotify.', siteIt: 'Abrir {site}', siteOpened: '{site}: abierta.',
@@ -1137,6 +1146,9 @@ export const LINES = {
       forced: '{app}: cortado na hora.',
       unkillable: '{app} não cai. Feche você mesmo pelo Gerenciador de Tarefas.',
       notFound: 'Não vejo “{app}” aberto no seu PC.',
+      cantClose: 'Ainda não consigo fechar apps neste computador: feche “{app}” você mesmo.',
+      cantMedia: 'Ainda não consigo controlar a música neste computador.',
+      cantLaunch: 'Não consigo abrir “{app}”: neste computador eu só abro arquivos da sua área de trabalho, pastas e sites.',
       // abrir um app ou um jogo, a música, um site
       openIt: 'Abrir {app}', opened: '{app}: abrindo.', notInstalled: 'Não acho “{app}” no seu PC.',
       music: 'Procurando “{song}” no Spotify.', siteIt: 'Abrir {site}', siteOpened: '{site}: aberto.',
@@ -1485,6 +1497,9 @@ export const LINES = {
       forced: '{app}: отрублено.',
       unkillable: '{app} не сдаётся. Закрой через Диспетчер задач.',
       notFound: 'Не вижу «{app}» среди открытых на твоём ПК.',
+      cantClose: 'Закрывать приложения на этом компьютере я пока не умею: закрой «{app}» сам.',
+      cantMedia: 'Управлять музыкой на этом компьютере я пока не умею.',
+      cantLaunch: 'Не могу открыть «{app}»: на этом компьютере я открываю только файлы с рабочего стола, папки и сайты.',
       // открыть приложение или игру, музыка, сайт
       openIt: 'Открыть {app}', opened: '{app}: запускаю.', notInstalled: 'Не нахожу «{app}» на твоём ПК.',
       music: 'Ищу «{song}» в Spotify.', siteIt: 'Открыть {site}', siteOpened: '{site}: открыт.',

@@ -89,13 +89,14 @@ async function boot() {
     voice,
   });
   capri.wander = config.wander;
-  capri.possessWindows = config.possess;
+  capri.possessWindows = config.possess && Boolean(config.caps?.possess);
   capri.restOn = config.rest || 'corner';
   capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
   capri.setScale(config.scale);
 
   const mission = new Mission();
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang, assistant: config.assistant });
+  brain.caps = config.caps || {}; // what works on this computer (main's capabilities.js): guide, setup, chat
 
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
@@ -615,7 +616,8 @@ async function boot() {
     wantsOut = cfg.visible !== false;
     reminders.sync(cfg.reminders); // one may have been cancelled from her menu
     capri.wander = cfg.wander;
-    capri.possessWindows = cfg.possess;
+    capri.possessWindows = cfg.possess && Boolean(cfg.caps?.possess);
+    brain.caps = cfg.caps || {};
     capri.restOn = cfg.rest || 'corner';
     applyMotion(cfg.motion);
     if ((cfg.claude === false && brain.watching) || cfg.assistant !== brain.assistant) {

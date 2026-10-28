@@ -151,9 +151,10 @@ export class Guide {
     if (talk) this.onTalk?.();
   }
 
-  // Claude Code and Codex can run for free through Ollama (`ollama launch`): she offers it for those two
+  // Claude Code and Codex can run for free through Ollama (`ollama launch`): she offers it for those two,
+  // where she can open its window herself
   get freeWay() {
-    return Boolean(this.setup) && ['claude', 'codex'].includes(this.brain.assistant);
+    return Boolean(this.setup) && Boolean(this.brain.caps?.ollamaLaunch) && ['claude', 'codex'].includes(this.brain.assistant);
   }
 
   // "How does it work?" in her menu: what she can show you.
@@ -173,7 +174,8 @@ export class Guide {
     if (watching && !hooks.installed) actions.push({ id: 'connect', label: t.topics.connect, primary: true });
     actions.push({ id: 'icon', label: t.topics.icon, primary: !watching || hooks.installed });
     if (watching) {
-      actions.push({ id: 'claude', label: t.topics.claude });
+      // showing Claude's window takes knowing where the windows are
+      if (this.brain.caps?.windows) actions.push({ id: 'claude', label: t.topics.claude });
       actions.push({ id: 'folder', label: t.topics.folder });
     }
     actions.push({ id: 'talk', label: t.topics.talk });

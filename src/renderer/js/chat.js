@@ -466,6 +466,7 @@ export class Chat {
       return { line: this.brain.t.custom.remembered, face: 'smug' };
     }
     if (asked.kind === 'media') {
+      if (!this.can('mediaKeys')) return { line: t.cantMedia, face: 'aside' };
       this.capri.pulse();
       return (await this.host.media(asked.action)) ? { line: t.media[asked.action], face: 'smug' } : null;
     }
@@ -597,7 +598,9 @@ export class Chat {
     const item = await this.host.findLaunch(value);
     if (item) return this.launch(item, answer);
     const site = namedSite(value); // "[[open: YouTube]]": a site, not an app
-    return site ? this.offerSite(site.url, answer) : this.addLine(answer, fmt(t.notInstalled, { app: value }));
+    if (site) return this.offerSite(site.url, answer);
+    // where she can't list the installed apps, not finding it doesn't mean it isn't there
+    return this.addLine(answer, fmt(this.can('launchApps') ? t.notInstalled : t.cantLaunch, { app: value }));
   }
 
   // her answer, with a line of what she did under it
@@ -637,6 +640,7 @@ export class Chat {
 
   // The media keys: pause, next, louder…
   async media(action, answer) {
+    if (!this.can('mediaKeys')) return this.addLine(answer, this.t.cantMedia, 'aside');
     this.capri.pulse();
     const ok = await this.host.media(action);
     if (ok) this.addLine(answer, this.t.media[action], 'smug');
@@ -686,6 +690,7 @@ export class Chat {
   // She was asked to close an app: a button with its name, and nothing happens until you click it.
   async offerClose(wanted, answer) {
     const { t } = this;
+    if (!this.can('closeApps')) return this.addLine(answer, fmt(t.cantClose, { app: wanted }), 'aside');
     const app = await this.host.findApp(wanted);
     if (!this.open || this.turn) return;
     if (!app) {
@@ -707,10 +712,11 @@ export class Chat {
     const res = await this.host.closeApp(app.name, force);
     if (!this.open) return;
     let line;
-    if (res.error) line = `${t.failed} ${res.error}`;
+    if (res.unsupported) line = fmt(t.cantClose, { app: app.name });
+    else if (res.error) line = `${t.failed} ${res.error}`;
     else if (!res.running) line = fmt(force ? t.forced : t.closed, { app: app.name });
     else line = fmt(force ? t.unkillable : t.stillOpen, { app: app.name });
-    this.panel.setFace(res.running || res.error ? 'aside' : 'laugh');
+    this.panel.setFace(res.running || res.error || res.unsupported ? 'aside' : 'laugh');
     this.panel.stream(line, { done: true });
     this.remember({ role: 'assistant', content: line });
     // it hid in the tray, or it's asking you to save something: forcing it is your call
@@ -723,11 +729,24 @@ export class Chat {
     this.listApps();
   }
 
-  // What she can do on the PC when you ask (Windows), and nothing else.
+  // A feature of main's capabilities.js that works on this computer
+  can(name) {
+    return Boolean(this.brain.caps?.[name]);
+  }
+
+  // What she can do on the computer when you ask (what works on this one), and nothing else.
   powers() {
+    const media = this.can('mediaKeys');
+    const what = this.can('launchApps') ? 'an app, a game, a file or folder on their desktop' : 'a file or folder on their desktop';
     const lines = [
-      'Only when the user asks you to open an app, a game, a file or folder on their desktop, or a folder like Downloads, to play music, to control the music playing, or to open a website: say in a few words that you will, and end your answer with one tag: [[open: NAME]], [[music: ARTIST - SONG]] (it plays on YouTube; if they did not say which song, pick one that fits), [[media: ACTION]] (ACTION: pause, play, next, previous, volup, voldown or mute), or [[site: ADDRESS]]. Some of these get a button to confirm, so never say it is already done. Any other time, write no tag at all: there are no other tags.',
+      `Only when the user asks you to open ${what}, or a folder like Downloads, to play music, ${media ? 'to control the music playing, ' : ''}or to open a website: say in a few words that you will, and end your answer with one tag: [[open: NAME]], [[music: ARTIST - SONG]] (it plays on YouTube; if they did not say which song, pick one that fits), ${media ? '[[media: ACTION]] (ACTION: pause, play, next, previous, volup, voldown or mute), ' : ''}or [[site: ADDRESS]]. Some of these get a button to confirm, so never say it is already done. Any other time, write no tag at all: there are no other tags.`,
     ];
+    const cannot = [
+      !this.can('launchApps') && 'open installed apps or games',
+      !media && 'control the music playing (pause, next, volume)',
+      !this.can('closeApps') && 'close apps',
+    ].filter(Boolean);
+    if (cannot.length) lines.push(`On this computer you can't ${cannot.join(', ')}: if asked, say so plainly, in character, write no tag for it, and never pretend it is done.`);
     if (this.apps.length) {
       const open = this.apps.map(({ name, label }) => (label && label !== name ? `${name} (${label})` : name)).join(', ');
       lines.push(`You can also close an app that's open, only when they ask you to: end your answer with [[close: NAME]], NAME being the exact name from this list (the part before the parentheses). They get a button to confirm it. Apps open right now: ${open}.`);
