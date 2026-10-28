@@ -127,6 +127,8 @@ function createMacInstaller({ exePath, tmpDir, download, relaunch, arch = proces
         const apps = fs.readdirSync(staging).filter((name) => name.endsWith('.app'));
         if (apps.length !== 1) throw new Error(`Update bundle check failed: expected one app, found ${apps.length}`);
         const fresh = path.join(staging, apps[0]);
+        // a folder of its own, not a symlink (ditto keeps those) leading anywhere else
+        if (!fs.lstatSync(fresh).isDirectory()) throw new Error('Update bundle check failed: the app is not a folder');
         const [id, freshId, freshVersion] = await Promise.all([
           plistValue(exec, bundle, 'CFBundleIdentifier'),
           plistValue(exec, fresh, 'CFBundleIdentifier'),
@@ -167,6 +169,7 @@ function cleanup({ exePath, tmpDir = null, fs = nodeFs }) {
     // no temporary folder to read
   }
   for (const file of leftovers) {
+    if (file === bundle) continue; // never the running app, whatever it was named
     try {
       fs.rmSync(file, { recursive: true, force: true });
     } catch {

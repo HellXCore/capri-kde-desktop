@@ -285,3 +285,32 @@ test('About shows the updater in every language, with all its texts', () => {
   const without = settingsView({ lang: 'en', cfg: {} });
   assert.equal(without.sections.find((s) => s.id === 'about').rows.some((r) => r.id === 'update'), false);
 });
+
+test('an installer electron-updater cannot start (only an error event) is an error, not "installing" forever', async () => {
+  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0' } } });
+  u.quitAndInstall = () => u.emit('error', new Error("No valid update available, can't quit and install"));
+  u.on('error', () => {}); // as main.js does
+  const c = new UpdateController({ transport: updaterTransport(u) });
+  await c.check();
+  await c.download();
+  await c.install(async () => true);
+  assert.equal(c.status.kind, 'error');
+  assert.match(c.status.error, /No valid update/);
+  assert.equal(c.busy, false);
+  assert.equal(u.listenerCount('error'), 1);
+});
+
+test('a bundle that fails its check (not one app, not signed, a symlink) is a signature error', () => {
+  for (const message of ['Update bundle check failed: expected one app, found 2', 'Update bundle check failed: the app is not signed', 'Update bundle check failed: the app is not a folder']) {
+    assert.equal(updateError(new Error(message)).category, 'signature', message);
+  }
+});
+
+test('the repository builds read this fork\'s GitHub releases, never a test feed', () => {
+  const pkg = require('../package.json');
+  assert.equal(pkg.capriUpdaterTest, undefined);
+  assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'Libes6', 'capri-desktop']]);
+  // app-update.yml as electron-builder writes it from that
+  const yml = 'owner: Libes6\nrepo: capri-desktop\nprovider: github\nreleaseType: release\nupdaterCacheDirName: capri-desktop-updater\n';
+  assert.deepEqual(readFeed('x', { readFile: () => yml }), { provider: 'github' });
+});
