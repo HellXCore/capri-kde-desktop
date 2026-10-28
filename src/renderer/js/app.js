@@ -16,6 +16,7 @@ import { Pc } from './pc.js';
 import { linesFor } from './lines.js';
 import { fmt, reducedMotion } from './util.js';
 import { Initiative, occupied, pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 const host = window.host;
 
@@ -161,7 +162,8 @@ async function boot() {
   let cursorPending = false;
   let rearmedAt = -Infinity;
   let follow = null; // (pointer) => she may follow it to another screen (below)
-  setInterval(async () => {
+  // (not while your screen is locked or the computer asleep: pause.js)
+  pause.every(async () => {
     if (cursorPending) return;
     cursorPending = true;
     const at = await host.cursor().catch(() => null);
@@ -351,7 +353,7 @@ async function boot() {
   };
   const quiet = () => !capri.busy && !capri.act && !capri.dragging && !capri.stowed && !capri.dormant && !capri.hidden
     && capri.mode !== 'alert' && !chat.open && !guide.running && !panel.visible && ['stand', 'sit'].includes(capri.stance);
-  setInterval(async () => {
+  pause.every(async () => {
     if (!newStage || !quiet()) return;
     const stage = newStage;
     newStage = 0;
@@ -368,12 +370,12 @@ async function boot() {
   // Nothing going on and you're at your PC: now and then something of her own, when her initiative
   // says so (Active; initiative.js says how often). Not right as she comes online.
   initiative.delay('idle');
-  setInterval(() => {
+  pause.every(() => {
     if (!quiet() || brain.busySessions.length || capri.mode === 'sleep' || performance.now() - lastMove > 2 * 60 * 1000) return;
     initiative.offer('idle', () => panel.say({ kind: 'idle', face: 'calm', line: brain.idleLine(), hold: 4000 }));
   }, 20000);
   // time spent together: a little sync for every ten minutes you're at your PC with her out
-  setInterval(() => {
+  pause.every(() => {
     if (performance.now() - lastMove < 10 * 60 * 1000 && !capri.stowed) bond.add('time', 1);
   }, 10 * 60 * 1000);
   // back at your PC after a while: once she's attached to you, she's glad to see you
@@ -531,8 +533,41 @@ async function boot() {
     panel.say({ kind: 'info', line: t.end, hold: 5000 });
   };
 
+  // Your screen locked or the computer asleep (main.js, CAPRI-07): her drawing, her panel's
+  // animations, her CSS animations and her optional timers stop (pause.js), she stays as she is.
+  // Claude Code's events still come in (brain.js keeps count, the panel keeps what matters) and so
+  // do her reminders' times. Back: one set of loops and timers again, her clocks pushed on by the
+  // time paused, what was kept goes up, and no idle line right away (nor a pile of them).
+  pause.on({
+    pause: () => {
+      document.documentElement.dataset.paused = 'true';
+      capri.paused = true;
+      chip.pause();
+      mask.pause();
+      fx.pause();
+      panel.pause();
+      clearTimeout(wakeTimer);
+      wakeTimer = 0;
+    },
+    resume: (gap) => {
+      delete document.documentElement.dataset.paused;
+      capri.shiftClock(gap);
+      capri.paused = false;
+      chip.unpause();
+      mask.unpause();
+      fx.unpause(gap);
+      initiative.delay('idle');
+      panel.unpause(gap);
+      // where the pointer is, she learns again from it (click-through until it comes over her)
+      mouse = null;
+      refreshHit();
+      hoverChip();
+    },
+  });
+  host.onPower?.((state) => pause.set(Boolean(state?.away)));
+
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, pc, setup, initiative, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, pc, setup, initiative, pause, screens: () => screens };
 
   host.onClaudeEvent((evt) => brain.handle(evt));
   host.onWindows((data) => {
@@ -854,7 +889,7 @@ async function boot() {
 
   // In the evening, after a real day's work, she brings you her report card once, on her own,
   // at a quiet moment.
-  setInterval(() => {
+  pause.every(() => {
     const day = mission.day;
     const quiet = !brain.busySessions.length && !panel.visible && !guide.running && !capri.busy && !capri.act;
     if (new Date().getHours() < 18 || day.reported || day.missions < 3 || !quiet) return;

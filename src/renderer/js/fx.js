@@ -252,6 +252,31 @@ export class FxLayer {
     this.last = 0;
     this.frame = this.frame.bind(this);
     this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.paused = false;
+  }
+
+  // Screen locked or asleep (pause.js): no frames meanwhile, the effects stay as they are. Back
+  // after `gap` ms: each one's clock (born, its *At moments, as they were when it paused) is pushed
+  // on by it, so they go on from where they were instead of all ending at once, and the loop starts
+  // again (one loop).
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.nextFrame?.();
+    this.nextFrame = null;
+    this.frozen = this.items.flatMap((it) => Object.keys(it)
+      .filter((k) => (k === 'born' || k.endsWith('At')) && Number.isFinite(it[k]) && it[k] > 0)
+      .map((k) => [it, k, it[k]]));
+  }
+
+  // (one added or changed while paused is on the real clock already: left as it is)
+  unpause(gap = 0) {
+    if (!this.paused) return;
+    this.paused = false;
+    for (const [it, k, v] of this.frozen || []) if (gap > 0 && it[k] === v) it[k] = v + gap;
+    this.frozen = null;
+    this.last = 0; // the first frame back steps by nothing
+    if (this.running && !this.nextFrame) this.nextFrame = frameIn(0, this.frame);
   }
 
   resize(width, height) {
@@ -286,7 +311,7 @@ export class FxLayer {
       // something that moves smoothly (her intro) wants the very next refresh, not the next whole frame
       this.running = true;
       this.nextFrame?.();
-      this.nextFrame = frameIn(0, this.frame);
+      this.nextFrame = this.paused ? null : frameIn(0, this.frame); // paused: unpause() starts it
     }
     return item;
   }
@@ -821,6 +846,7 @@ export class FxLayer {
   // Between whole frames it waits with a timer, not a request for every refresh (see frameIn).
   frame(now) {
     this.nextFrame = null;
+    if (this.paused) return;
     const smooth = this.items.some((it) => it.smooth);
     if (now - this.last < FRAME_MS - 2 && !smooth) {
       this.nextFrame = frameIn(this.last + FRAME_MS - performance.now(), this.frame);

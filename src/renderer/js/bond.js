@@ -12,6 +12,7 @@
 
 import { fmt, today } from './util.js';
 import { pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 // the xp each stage starts at; 1000 is 100 %
 export const STAGES = [0, 100, 300, 550, 850];
@@ -186,7 +187,7 @@ export class Jealousy {
       this.tally = null;
     }
     if (this.tally?.date !== today()) this.tally = { date: today(), ms: {} };
-    setInterval(() => this.tick(), 1000);
+    pause.every(() => this.tick(), 1000); // not while your screen is locked or asleep (pause.js)
   }
 
   get t() {

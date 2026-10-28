@@ -28,6 +28,7 @@ class Small {
     this.y = 0;
     this.loop = this.loop.bind(this);
     this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.paused = false;
   }
 
   moveTo(x, y) {
@@ -53,7 +54,21 @@ class Small {
     this.canvas.hidden = false;
     this.shownAt = performance.now();
     this.nextFrame?.();
-    this.nextFrame = frameIn(0, this.loop);
+    this.nextFrame = this.paused ? null : frameIn(0, this.loop);
+  }
+
+  // Screen locked or asleep (pause.js): it stays where it is, undrawn, until you're back; then one
+  // loop again, if it's on screen.
+  pause() {
+    this.paused = true;
+    this.nextFrame?.();
+    this.nextFrame = null;
+  }
+
+  unpause() {
+    if (!this.paused) return;
+    this.paused = false;
+    if (this.visible && !this.nextFrame) this.nextFrame = frameIn(0, this.loop);
   }
 
   hide() {
@@ -67,7 +82,7 @@ class Small {
   // on twos: woken for the refresh its next drawing is due on, not for every one (see frameIn)
   loop(now) {
     this.nextFrame = null;
-    if (!this.visible) return;
+    if (!this.visible || this.paused) return;
     if (now - this.last >= STEP - 1) {
       this.last = now;
       const dpr = window.devicePixelRatio || 1;

@@ -15,6 +15,7 @@ const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
 const { createBridge } = require('./bridge');
 const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
+const { watchPower } = require('./power');
 const { createCapabilities } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
@@ -62,6 +63,7 @@ let updateOffered = null; // the version her menu offers
 let updateSaid = null; // the version she has mentioned (once)
 let demoTimer = null;
 let windowWatch = null;
+let powerWatch = null; // screen locked / asleep (power.js): her overlay pauses its decorative work
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
 let lastWindows = null;
 let chatModels = null; // the provider's models, as last seen (null: not reached)
@@ -239,6 +241,11 @@ function createOverlay() {
     });
     if (DEV && process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
   }
+}
+
+// Away (screen locked, asleep) or back: the overlay's only word of it (preload.js onPower).
+function sendPower() {
+  if (powerWatch) overlay?.webContents.send('power:state', powerWatch.state());
 }
 
 function sendCommand(name, payload = {}) {
@@ -867,6 +874,7 @@ function createTray() {
 
 function registerIpc() {
   ipcMain.on('renderer:ready', () => {
+    sendPower(); // a reload while you were away: she starts paused
     if (!SMOKE) return;
     const cfg = config.load();
     console.log(`[capri] smoke ready: ${process.platform}/${process.arch} lang=${resolveLang(cfg.lang)} (${lang.langSetting(cfg.lang, LANGS)})`);
@@ -1218,6 +1226,14 @@ async function debugHandler(route, body) {
     sendCommand(body.name, body);
     return { ok: true };
   }
+  if (route === 'power') {
+    // her pause, without locking anything: { event: 'lock-screen' | 'unlock-screen' | 'suspend' |
+    // 'resume' | ... } as if powerMonitor had sent it (to her pause only: the window watcher and
+    // the mouse hook don't hear of it), or { away: true | false } held until said otherwise
+    if (typeof body.away === 'boolean') powerWatch?.test(body.away);
+    else if (body.event) powerWatch?.emit(String(body.event));
+    return { ok: true, value: powerWatch?.state() ?? null };
+  }
   if (route === 'reload') {
     overlay.webContents.reloadIgnoringCache();
     return { ok: true };
@@ -1443,10 +1459,15 @@ function main() {
     // after sleep or a locked screen, once Windows has settled
     powerMonitor.on('resume', () => setTimeout(rearmOverlay, 2000));
     powerMonitor.on('unlock-screen', () => setTimeout(rearmOverlay, 1000));
+    // and meanwhile her overlay pauses what's only for show (power.js; the macOS window watcher
+    // pauses its helper on the same events itself: windows.js). Main goes on: the bridge still
+    // takes Claude Code's events and passes them on, she shows what matters once you're back.
+    powerWatch = watchPower({ power: powerMonitor, onChange: sendPower });
   });
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    powerWatch?.stop();
     windowWatch?.stop();
   });
   app.on('window-all-closed', () => {});

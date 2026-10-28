@@ -3,6 +3,7 @@
 import { linesFor, ASSISTANT_NAMES } from './lines.js';
 import { pick, fmt, duration, basename, rand } from './util.js';
 import { pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 const HACKING_TOOLS = new Set(['Bash', 'PowerShell', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
@@ -160,8 +161,19 @@ export class Brain {
 
   // Mid-task and nothing from Claude for a while: it's thinking (a big question, a slow local
   // model). The ticker counts the seconds and she keeps herself busy, so you can tell nothing froze.
+  // Not while your screen is locked or the computer asleep (pause.js): the timer stops, and starts
+  // again once you're back if Claude is still at it.
   watchThinking() {
-    if (!this.thinkTimer) this.thinkTimer = setInterval(() => this.thinkTick(), 1000);
+    if (!this.thinkTimer && !pause.paused) this.thinkTimer = setInterval(() => this.thinkTick(), 1000);
+    if (!this.thinkResume) {
+      this.thinkResume = pause.on({
+        pause: () => {
+          clearInterval(this.thinkTimer);
+          this.thinkTimer = 0;
+        },
+        resume: () => this.busySessions.length && this.watchThinking(),
+      });
+    }
   }
 
   thinkTick() {

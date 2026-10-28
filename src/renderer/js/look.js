@@ -7,6 +7,7 @@
 
 import { fmt, rand } from './util.js';
 import { clean, mood } from './chat.js';
+import { pause } from './pause.js';
 
 const FIRST_AFTER = 2 * 60 * 1000; // turned on: her first look a couple of minutes later
 const EVERY = [8, 15];             // then every 8 to 15 minutes…
@@ -32,7 +33,7 @@ export class Look {
     this.nextAt = 0;
     this.lastFg = null;
     this.lastAt = 0;
-    setInterval(() => this.tick(), 30000);
+    pause.every(() => this.tick(), 30000); // never a look at your locked screen (pause.js)
   }
 
   get t() {

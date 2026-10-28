@@ -152,6 +152,49 @@ export class Capri {
     this.kick();
   }
 
+  // Your screen locked or the computer asleep (pause.js): the loop stops as when she's hidden,
+  // and nothing of her changes meanwhile. Her clocks are noted, for shiftClock().
+  get paused() {
+    return this._paused;
+  }
+
+  set paused(on) {
+    if (on === this._paused) return;
+    this._paused = on;
+    if (on) this.frozen = this.clocks().map(([o, k]) => [o, k, o[k]]);
+    this.kick();
+  }
+
+  // The moments her behaviour runs on: [object, key].
+  clocks() {
+    const out = [];
+    const add = (o, keys) => {
+      if (o) for (const k of keys) out.push([o, k]);
+    };
+    add(this, ['lastDraw', 'lastActivity', 'nextTwitch', 'nextMove', 'nextGaze', 'nextShed', 'nextNotice',
+      'peekUntil', 'lastGlyph', 'sleptAt', 'nextHome', 'lastFall', 'refuseUntil']);
+    add(this.base, ['start']);
+    add(this.act?.player, ['start']);
+    add(this.held, ['last']);
+    add(this.flight, ['last', 'freezeUntil']);
+    add(this.skid, ['last']);
+    return out;
+  }
+
+  // Back after `gap` ms paused: the clocks noted when she paused, and untouched since, are pushed
+  // on by it, as if no time had gone by. What was due during the pause (a twitch, a wander, falling
+  // asleep, the end of an act) doesn't all come due at once, and a fall or a throw goes on from
+  // where it was (their steps are capped too). One set while she was paused (Claude's events still
+  // come) is already on the real clock and stays as it is.
+  shiftClock(gap) {
+    const frozen = this.frozen || [];
+    this.frozen = null;
+    if (!(gap > 0)) return;
+    for (const [o, k, v] of frozen) {
+      if (o[k] === v && Number.isFinite(v) && v > 0) o[k] = v + gap;
+    }
+  }
+
   // ---------- geometry ----------
 
   // Her silhouette at rest, for hit tests: the cut-out plus the mirrored right arm the shader adds.
@@ -445,7 +488,7 @@ export class Capri {
   // due on, not for every refresh in between (see frameIn).
   loop(now) {
     this.nextFrame = null;
-    if (this.hidden) return;
+    if (this.hidden || this.paused) return;
     if (now - this.lastDraw >= this.interval() - 1) {
       this.drawFrame(now);
       this.behave(now);
@@ -454,7 +497,7 @@ export class Capri {
   }
 
   schedule() {
-    if (this.nextFrame || this.hidden) return;
+    if (this.nextFrame || this.hidden || this.paused) return;
     this.nextFrame = frameIn(this.lastDraw + this.interval() - performance.now(), this.loop);
   }
 
