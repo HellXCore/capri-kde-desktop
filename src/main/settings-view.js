@@ -71,6 +71,8 @@ function settingsView(facts) {
   const render = cfg.render || 'auto';
   const motionPairs = [['auto', t.motionAuto], ['full', t.motionFull], ['reduced', t.motionReduced]];
   const restPairs = [['corner', t.restCorner], ['taskbar', t.restTaskbar]];
+  const initiativePairs = [['quiet', t.initiativeQuiet], ['normal', t.initiativeNormal], ['active', t.initiativeActive]];
+  const initiative = initiativePairs.some(([v]) => v === cfg.initiative) ? cfg.initiative : 'normal';
 
   const providers = facts.providers || [];
   const providerNow = providers.find((p) => p.id === cfg.provider);
@@ -117,6 +119,12 @@ function settingsView(facts) {
     behavior: [
       { id: 'motion', label: t.motion, value: pick(motionPairs, cfg.motion, t.motionAuto), control: select('motion', motionPairs, cfg.motion || 'auto') },
       { id: 'rest', label: t.rest, value: pick(restPairs, cfg.rest, t.restCorner), control: select('rest', restPairs, cfg.rest || 'corner') },
+      {
+        id: 'initiative',
+        label: t.initiative,
+        value: pick(initiativePairs, initiative, t.initiativeNormal),
+        control: { ...select('initiative', initiativePairs, initiative), note: s.initiativeNote },
+      },
       { id: 'wander', label: t.wander, value: onOff(cfg.wander), control: toggle('wander', cfg.wander) },
       {
         id: 'possess',

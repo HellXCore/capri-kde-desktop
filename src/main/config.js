@@ -35,6 +35,7 @@ const DEFAULTS = {
   jealous: true,     // she gets jealous when she sees you on another AI (bond.js)
   reminders: [],     // the reminders she keeps: [{ id, at, text, made }] (reminders.js)
   bond: null,        // how close she is to you: { xp, first, last, days, streak, caps } (bond.js)
+  initiative: 'normal', // how much she speaks up on her own: 'quiet', 'normal' or 'active' (initiative.js); never errors, prompts, reminders or answers
   pcReact: true,     // she reacts to your PC: the processor at full tilt, the battery, the network, a USB stick, a game (pc.js)
   watchScreen: false, // she looks at your screen now and then and says something about it (look.js)
   lookAsked: false,  // she told you what looking means (where the picture goes) and you said yes
