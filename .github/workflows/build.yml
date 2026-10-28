@@ -54,6 +54,8 @@ jobs:
         run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # mac.identity is explicitly '-' (ad-hoc); no certificate or signing secret is used.
+          CSC_FOR_PULL_REQUEST: ${{ runner.os == 'macOS' && 'true' || 'false' }}
       - name: Verify distributed macOS signatures
         if: runner.os == 'macOS'
         run: npm run verify:mac

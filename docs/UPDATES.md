@@ -55,7 +55,8 @@ including the Swift window helper, with hardened runtime enabled. Its entitlemen
 bundled libraries without a shared Developer ID Team ID. The final bundle must pass
 `codesign --verify --deep --strict`; sealed resources and the `capri.desktop` identifier are also checked.
 CI extracts both ZIP and DMG, verifies each app, starts the ZIP app and confirms that modifying a resource is
-rejected. These are integrity checks, not Developer ID authentication or notarization.
+rejected. Mac PR builds explicitly enable ad-hoc signing (`CSC_FOR_PULL_REQUEST=true`);
+this workflow uses no signing certificate or signing secrets. Revisit that policy before adding Developer ID credentials. These are integrity checks, not Developer ID authentication or notarization.
 
 Versions through 0.2.0 skipped bundle signing (`CSC_IDENTITY_AUTO_DISCOVERY=false` with no explicit identity).
 Only the Electron executable retained a linker signature. `codesign --verify` rejected it with
