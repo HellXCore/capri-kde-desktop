@@ -1,3 +1,27 @@
+> **Libes6 fork — v0.1.0**
+>
+> Cross-platform packaging and startup fixes based on upstream 0.4.4. Our version sequence starts at 0.1.0; it does not follow upstream numbering. Release tags use `fork-v0.1.0` to preserve the inherited upstream `v0.1.0` tag. The original documentation below describes the full Windows feature set.
+
+## Fork builds and releases
+
+- Windows x64: `npm run dist:win` → EXE installer.
+- Linux x64: `npm run dist:linux` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported in 0.1.0 because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
+- macOS Apple Silicon: `npm run dist:mac` → ARM64 DMG and ZIP. Spaces/fullscreen overlay visibility and menu-bar icon sizing are configured for macOS. Screen capture requires permission in System Settings.
+
+Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
+
+Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain Windows-only in 0.1.0. Unsupported window options and Linux login startup are disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation. Linux uses 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there; Windows/macOS retain event-driven tracking. Native GUI acceptance on every desktop environment is still required.
+
+### Automatic release pipeline
+
+`.github/workflows/build.yml` runs tests, builds installers and launches each packaged app on native Windows, Linux X11 and macOS ARM64 runners. Pull requests validate all three platforms without creating a release. A push/merge to `main` (or a manual run on `main`) creates or updates a **draft** `fork-v<package.json version>` only after all three jobs succeed. It attaches five installers and `SHA256SUMS.txt`, targeting the exact built commit. Only the release job has write permission.
+
+Successive merges update the same version's draft. Publish manually after reviewing/testing the artifacts. Once a version is published (or its tag points elsewhere), bump the version before the next release; the pipeline refuses to replace published binaries. Update both manifests with `npm version patch --no-git-tag-version` (or `minor`/`major`). Do not create the release tag yourself before the draft is ready.
+
+These initial builds have no Windows certificate or Apple Developer ID/notarization. macOS packaging may apply an ad-hoc signature, but that is not a trusted distribution signature. Configure distribution signing before treating the installers as production releases.
+
+---
+
 **English** · [Français](README.fr.md)
 
 # Capri

@@ -1,9 +1,9 @@
 {
   "name": "capri-desktop",
-  "version": "0.4.4",
+  "version": "0.1.0",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
-  "repository": "github:mochiiwuff/capri-desktop",
+  "repository": "github:Libes6/capri-desktop",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
@@ -18,7 +18,12 @@
     "hooks:agy:uninstall": "node scripts/install-hooks-agy.js --uninstall",
     "check:llm": "node scripts/check-llm.js",
     "test:hooks": "node --test tests/hooks.test.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --publish never",
+    "test": "node --test tests/*.test.js",
+    "test:smoke": "node scripts/smoke-test.js",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux --x64 --publish never",
+    "dist:mac": "electron-builder --mac --arm64 --publish never"
   },
   "keywords": [
     "claude-code",
@@ -29,7 +34,7 @@
   ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
     "electron": "^44.9.3",
@@ -63,8 +68,55 @@
       "perMachine": false,
       "runAfterFinish": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Capri",
-      "artifactName": "Capri-Setup-${version}.${ext}"
+      "shortcutName": "Capri"
+    },
+    "artifactName": "Capri-${version}-${os}-${arch}.${ext}",
+    "publish": null,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.entertainment",
+      "icon": "assets/icons/capri-mac.png",
+      "hardenedRuntime": true,
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Capri captures your screen only when you request screen analysis or a screenshot."
+      }
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "icon": "assets/icons/capri.png",
+      "maintainer": "Libes6 <Libes6@users.noreply.github.com>",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "capri-desktop"
+        }
+      }
     }
   }
 }

@@ -27,6 +27,15 @@ const demoSteps = require('../../scripts/demo-sequence');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
+const SMOKE = process.argv.includes('--smoke-test');
+if (SMOKE) {
+  app.setPath('userData', process.env.CAPRI_SMOKE_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-')));
+  config.save({ welcomed: true, claude: false, muted: true, motion: 'reduced', render: process.platform === 'linux' ? 'software' : 'auto' });
+  if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
+  setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
+}
+// A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
+if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 
@@ -149,7 +158,7 @@ function fitOverlay() {
 function rearmOverlay() {
   if (!overlay || overlay.isDestroyed()) return;
   overlay.setIgnoreMouseEvents(false);
-  overlay.setIgnoreMouseEvents(true, { forward: true });
+  overlay.setIgnoreMouseEvents(true, process.platform === 'linux' ? undefined : { forward: true });
   overlay.setAlwaysOnTop(true, 'screen-saver');
   fitOverlay();
   sendCommand('rearmed'); // click-through again: she waits for the pointer to be on her
@@ -196,7 +205,10 @@ function createOverlay() {
   });
 
   overlay.setAlwaysOnTop(true, 'screen-saver');
-  overlay.setIgnoreMouseEvents(true, { forward: true });
+  if (process.platform === 'darwin') {
+    overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  overlay.setIgnoreMouseEvents(true, process.platform === 'linux' ? undefined : { forward: true });
   overlay.loadURL('capri://app/src/renderer/index.html');
   // always shown: put away, she's still there as her biochip in the corner. Sized again first:
   // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
@@ -206,13 +218,14 @@ function createOverlay() {
   });
   overlay.webContents.on('render-process-gone', (_e, details) => {
     console.error('[capri] renderer gone:', details.reason);
+    if (SMOKE) app.exit(1);
   });
-  if (DEV) {
+  if (DEV || SMOKE) {
     overlay.webContents.on('console-message', (e) => {
       const { level, message, lineNumber, sourceId } = e;
       console.log(`[renderer:${level}] ${message} (${String(sourceId).split('/').pop()}:${lineNumber})`);
     });
-    if (process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
+    if (DEV && process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
@@ -281,7 +294,7 @@ function resolveLang(setting) {
 // What the overlay gets: `lang` is the resolved one, `langSetting` what the user picked.
 function rendererConfig() {
   const { apiKeys, ...cfg } = config.load(); // the keys stay here: the overlay only learns which ones are set
-  return { ...cfg, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: cfg.lang, floorGap: overlayArea().gap };
+  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: cfg.lang, floorGap: overlayArea().gap };
 }
 
 function updateConfig(patch) {
@@ -413,8 +426,8 @@ function rebuildTray() {
       ],
     },
     { label: t.wander, type: 'checkbox', checked: cfg.wander, click: (item) => updateConfig({ wander: item.checked }) },
-    { label: t.possess, type: 'checkbox', checked: cfg.possess, click: (item) => updateConfig({ possess: item.checked }) },
-    { label: t.jealous, type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
+    { label: t.possess, enabled: process.platform === 'win32', type: 'checkbox', checked: cfg.possess, click: (item) => updateConfig({ possess: item.checked }) },
+    { label: t.jealous, enabled: process.platform === 'win32', type: 'checkbox', checked: cfg.jealous !== false, click: (item) => updateConfig({ jealous: item.checked }) },
     { label: t.pcReact, type: 'checkbox', checked: cfg.pcReact !== false, click: (item) => updateConfig({ pcReact: item.checked }) },
     {
       // she asks first (what she'll send where), then turns it on herself
@@ -475,7 +488,8 @@ function rebuildTray() {
     {
       label: t.startup,
       type: 'checkbox',
-      checked: app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+      enabled: process.platform !== 'linux',
+      checked: process.platform !== 'linux' && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
     },
     // her hooks, while she watches Claude Code
@@ -667,15 +681,20 @@ async function pickClaudeFolder() {
 
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icons', 'tray.png'));
-  tray = new Tray(icon);
+  tray = new Tray(process.platform === 'darwin' ? icon.resize({ width: 22, height: 22 }) : icon);
   tray.setToolTip('Capri');
   tray.on('click', () => sendCommand('status'));
   rebuildTray();
 }
 
 function registerIpc() {
+  ipcMain.on('renderer:ready', () => {
+    if (!SMOKE) return;
+    console.log(`[capri] smoke ready: ${process.platform}/${process.arch}`);
+    app.quit();
+  });
   ipcMain.on('overlay:interactive', (_e, on) => {
-    overlay?.setIgnoreMouseEvents(!on, { forward: true });
+    overlay?.setIgnoreMouseEvents(!on, process.platform === 'linux' ? undefined : { forward: true });
   });
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
@@ -1028,6 +1047,7 @@ function main() {
 
   app.whenReady().then(() => {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
+    if (process.platform === 'darwin') app.dock?.hide();
     serveProtocol();
     registerIpc();
     createOverlay();
@@ -1041,7 +1061,7 @@ function main() {
         overlay?.webContents.send('windows:update', data);
       },
     });
-    createBridge({
+    if (!SMOKE) createBridge({
       port: PORT,
       // her own Claude Code chat's hooks would cover its answer with theirs
       onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
@@ -1049,8 +1069,8 @@ function main() {
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
     llm.restoreClaude(readMemory().claude);
-    refreshModels(); // for her menu's model list
-    setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
+    if (!SMOKE) refreshModels(); // for her menu's model list
+    if (!SMOKE) setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
     // a screen plugged in, unplugged, or rearranged: her window fitted again, and she learns of it
     const screensChanged = () => {
       fitOverlay();
@@ -1070,7 +1090,7 @@ function main() {
     globalShortcut.unregisterAll();
     windowWatch?.stop();
   });
-  app.on('window-all-closed', (e) => e.preventDefault());
+  app.on('window-all-closed', () => {});
 }
 
 main();
