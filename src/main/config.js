@@ -8,7 +8,7 @@ const DEFAULTS = {
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
   muted: false,
   volume: 0.7,
-  lang: 'auto',      // 'auto' follows the system language, or 'fr' / 'en'
+  lang: 'auto',      // 'auto' follows the system language (English if she speaks none of them), or 'fr' / 'en' / 'es' / 'pt' / 'ru'
   displayId: null,   // null = primary display
   wander: true,      // random teleports when idle
   possess: true,     // now and then she dives into the window she sits on and takes it over

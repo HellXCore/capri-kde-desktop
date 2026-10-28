@@ -1806,7 +1806,7 @@ const OTHERS = {
 };
 const converted = new Map();
 export function linesFor(lang, assistant = 'claude') {
-  const base = LINES[lang] || LINES.fr;
+  const base = LINES[lang] || LINES.en; // a language she doesn't speak: English, never a mix
   const other = OTHERS[assistant];
   if (!other) return base;
   const key = `${assistant}:${lang}`;

@@ -12,6 +12,7 @@ const { randomUUID } = require('node:crypto');
 
 const config = require('./config');
 const { TRAY, LANGS } = require('./labels');
+const lang = require('./lang');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const llm = require('./llm');
@@ -280,21 +281,19 @@ function demoWindow(open) {
   return true;
 }
 
-// 'auto' -> the first system language Capri speaks, English otherwise.
+// 'auto' -> the first system language Capri speaks, English otherwise (lang.js). Asked each time,
+// so a change in the system's languages shows at her next start without touching the 'auto' kept in the config.
+function systemLanguages() {
+  return { preferred: app.getPreferredSystemLanguages(), fallback: [app.getSystemLocale(), app.getLocale()] };
+}
 function resolveLang(setting) {
-  if (LANGS.includes(setting)) return setting;
-  const preferred = [...app.getPreferredSystemLanguages(), app.getSystemLocale(), app.getLocale()];
-  for (const tag of preferred) {
-    const base = String(tag || '').toLowerCase().split(/[-_]/)[0];
-    if (LANGS.includes(base)) return base;
-  }
-  return 'en';
+  return lang.resolveLang(setting, systemLanguages(), LANGS);
 }
 
 // What the overlay gets: `lang` is the resolved one, `langSetting` what the user picked.
 function rendererConfig() {
   const { apiKeys, ...cfg } = config.load(); // the keys stay here: the overlay only learns which ones are set
-  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: cfg.lang, floorGap: overlayArea().gap };
+  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: lang.langSetting(cfg.lang, LANGS), floorGap: overlayArea().gap };
 }
 
 function updateConfig(patch) {
@@ -481,8 +480,9 @@ function rebuildTray() {
     },
     {
       label: t.lang,
-      submenu: [[t.auto, 'auto'], ...LANGS.map((lang) => [TRAY[lang].name, lang])].map(([label, lang]) => ({
-        label, type: 'radio', checked: cfg.lang === lang, click: () => updateConfig({ lang }),
+      // Auto names the language it gives right now: "Automatic: English"
+      submenu: [[t.auto(t.langNames[resolveLang('auto')]), 'auto'], ...LANGS.map((code) => [TRAY[code].name, code])].map(([label, code]) => ({
+        label, type: 'radio', checked: lang.langSetting(cfg.lang, LANGS) === code, click: () => updateConfig({ lang: code }),
       })),
     },
     {
@@ -690,7 +690,8 @@ function createTray() {
 function registerIpc() {
   ipcMain.on('renderer:ready', () => {
     if (!SMOKE) return;
-    console.log(`[capri] smoke ready: ${process.platform}/${process.arch}`);
+    const cfg = config.load();
+    console.log(`[capri] smoke ready: ${process.platform}/${process.arch} lang=${resolveLang(cfg.lang)} (${lang.langSetting(cfg.lang, LANGS)})`);
     app.quit();
   });
   ipcMain.on('overlay:interactive', (_e, on) => {
