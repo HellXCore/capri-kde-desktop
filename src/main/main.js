@@ -1069,6 +1069,7 @@ function main() {
     caps.onChange(() => updateConfig({}));
     windowWatch = startWindowWatch({
       overlay,
+      session: caps.session, // Linux: X11 only, never XWayland or native Wayland
       onState: (ok) => caps.set('windowTracking', ok),
       onUpdate: (data) => {
         // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it

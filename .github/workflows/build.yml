@@ -43,7 +43,7 @@ jobs:
           cache: npm
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 openbox xcompmgr libgtk-3-0 libnss3 libasound2
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 openbox xcompmgr x11-utils libgtk-3-0 libnss3 libasound2
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - name: Package installers
@@ -60,6 +60,17 @@ jobs:
             openbox > /tmp/capri-openbox.log 2>&1 &
             xcompmgr > /tmp/capri-compositor.log 2>&1 &
             node scripts/smoke-test.js "${{ matrix.executable }}"
+          '
+      # an extra check of the X11 window watcher on Xvfb + openbox, not proof for real desktops
+      - name: X11 window watcher probe (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a bash -c '
+            openbox > /tmp/capri-openbox-probe.log 2>&1 &
+            sleep 1
+            xmessage -geometry 420x260+150+120 "Capri X11 probe" &
+            sleep 1
+            node scripts/x11-probe.js
           '
       - uses: actions/upload-artifact@v4
         with:
