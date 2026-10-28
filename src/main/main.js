@@ -18,6 +18,7 @@ const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { createCapabilities } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
+const settingsPatch = require('./settings-patch');
 const llm = require('./llm');
 const ollama = require('./ollama');
 const setup = require('./setup');
@@ -304,11 +305,18 @@ function rendererConfig() {
 
 // What her settings window shows (settings-view.js), from the config and what's known here.
 function settingsFacts() {
-  const cfg = config.load();
+  const { apiKeys, ...cfg } = config.load(); // the keys stay here: the window learns which are saved, no more
   const screens = displays();
   const current = targetDisplay();
   return {
     cfg,
+    keys: Object.fromEntries(Object.entries(apiKeys || {}).filter(([, v]) => Boolean(v)).map(([id]) => [id, true])),
+    envKeys: Object.fromEntries(Object.entries(llm.PROVIDERS).filter(([, p]) => p.env && process.env[p.env]).map(([id]) => [id, true])),
+    providers: Object.entries(llm.PROVIDERS).map(([id, p]) => ({ id, label: p.label, keyed: Boolean(p.env) })),
+    assistants: Object.entries(ASSISTANTS).map(([id, a]) => ({ id, name: a.name })),
+    models: chatModels ? [...chatModels] : null,
+    screens: screens.map((d) => ({ id: d.id, width: d.size.width, height: d.size.height })),
+    renderNow: RENDER_AT_START,
     lang: resolveLang(cfg.lang),
     langSetting: lang.langSetting(cfg.lang, LANGS),
     autoLang: resolveLang('auto'),
@@ -327,8 +335,106 @@ function openSettings() {
   settings?.open();
 }
 
-function updateConfig(patch) {
-  config.save(patch);
+// What her settings window may pick from right now (settings-patch.js checks against it).
+function settingsContext() {
+  return {
+    langs: LANGS,
+    providers: Object.keys(llm.PROVIDERS),
+    assistants: Object.keys(ASSISTANTS),
+    models: chatModels,
+    displays: displays().map((d) => d.id),
+    features: caps.all(),
+  };
+}
+
+// A change from her settings window: checked, saved through updateConfig like her menu's (so the
+// menu, the overlay and the window hear of it), then what isn't a config key is done. On a refusal
+// or a failed write the window is sent the view as it really is, and told why.
+function applySettings(input) {
+  const checked = settingsPatch.checkPatch(input, settingsContext());
+  if (!checked.ok) {
+    settings?.update();
+    return { ok: false, error: 'invalid', fields: checked.fields };
+  }
+  const cfg = config.load();
+  const { patch, effects } = settingsPatch.toConfig(checked.values, cfg);
+  try {
+    if (Object.keys(patch).length) updateConfig(patch, { strict: true });
+  } catch (err) {
+    console.error('[capri] settings not saved:', err.code || err.message);
+    settings?.update();
+    return { ok: false, error: 'save', code: err.code || null };
+  }
+  let status = 'saved';
+  if ('autostart' in effects) {
+    try {
+      app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: effects.autostart });
+    } catch (err) {
+      settings?.update();
+      return { ok: false, error: 'save', code: err.code || null };
+    }
+    rebuildTray();
+  }
+  if ('screen' in effects && effects.screen !== targetDisplay().id) {
+    sendCommand('goScreen', { id: effects.screen }); // she goes there herself, as from her menu; saved once she's there
+    status = 'moving';
+  }
+  if ('watchScreen' in effects && effects.watchScreen !== Boolean(cfg.watchScreen)) {
+    sendCommand('watchScreen', { on: effects.watchScreen }); // she asks first, as from her menu, then saves it
+    if (effects.watchScreen && !cfg.lookAsked) status = 'asks';
+  }
+  if (effects.assistantChanged) sendCommand('assistantChanged');
+  if ('provider' in patch) refreshModels().catch(() => {}); // its models, in the window and the menu once known
+  return { ok: true, status };
+}
+
+// A new API key from her settings window: checked, sealed (setup.js) and saved. It's never sent back
+// and never logged; the window only learns that a key is saved. For the provider in use, its models
+// are fetched with it, and the window told when that failed.
+async function saveSettingsKey(input) {
+  const { provider, key } = input || {};
+  const keyed = Object.entries(llm.PROVIDERS).filter(([, p]) => p.env).map(([id]) => id);
+  const checked = settingsPatch.checkKey(provider, key, keyed);
+  if (!checked.ok) return { ok: false, field: checked.field };
+  const before = config.load();
+  try {
+    updateConfig({ apiKeys: { ...before.apiKeys, [provider]: setup.sealKey(checked.key) } }, { strict: true });
+  } catch (err) {
+    console.error('[capri] key not saved:', err.code || 'write failed');
+    settings?.update();
+    return { ok: false, error: 'save', code: err.code || null };
+  }
+  if (provider !== before.provider) return { ok: true, status: 'keySaved' };
+  const models = await refreshModels().catch(() => null);
+  // saved either way; the field says when the service didn't answer with it
+  return models?.length ? { ok: true, status: 'keySaved' } : { ok: true, status: 'keySaved', field: 'rejected' };
+}
+
+// "Reset settings" in her window: only settings-patch.js RESET_KEYS go back to their defaults.
+function resetSettings() {
+  const before = config.load();
+  try {
+    updateConfig(settingsPatch.resetPatch(config.DEFAULTS), { strict: true });
+  } catch (err) {
+    console.error('[capri] settings not reset:', err.code || err.message);
+    settings?.update();
+    return { ok: false, error: 'save', code: err.code || null };
+  }
+  if (before.displayId !== config.DEFAULTS.displayId) {
+    // back on the main screen: her window there, and she learns of it
+    fitOverlay();
+    windowWatch?.refresh();
+    rebuildTray();
+    sendCommand('screens');
+  }
+  return { ok: true, status: 'resetDone' };
+}
+
+// `strict` (her settings window): saved to disk or not at all, and the error thrown to say so,
+// before anything else hears of the change
+function updateConfig(patch, { strict = false } = {}) {
+  if (strict) config.commit(patch);
+  else config.save(patch);
   if ('rest' in patch) {
     fitOverlay(); // the taskbar in her window or not
     windowWatch?.refresh();
@@ -767,6 +873,14 @@ function registerIpc() {
   ipcMain.handle('settings:view', (e) => (settings?.owns(e.sender) ? settingsView(settingsFacts()) : null));
   ipcMain.on('settings:close', (e) => settings?.owns(e.sender) && settings.close());
   ipcMain.on('settings:menu', (e) => settings?.owns(e.sender) && trayMenu?.popup({ window: settings.window() }));
+  ipcMain.handle('settings:set', (e, patch) => (settings?.owns(e.sender) ? applySettings(patch) : null));
+  ipcMain.handle('settings:key', (e, input) => (settings?.owns(e.sender) ? saveSettingsKey(input) : null));
+  ipcMain.handle('settings:reset', (e) => (settings?.owns(e.sender) ? resetSettings() : null));
+  ipcMain.on('settings:restart', (e) => {
+    if (!settings?.owns(e.sender)) return;
+    app.relaunch();
+    app.exit(0);
+  });
   ipcMain.on('settings:ready', (e, info) => {
     if (!settings?.owns(e.sender)) return;
     if (DEV || SMOKE) console.log('[capri] settings ready:', JSON.stringify(info));
@@ -985,6 +1099,31 @@ function waitSettingsReady(ms = 10000) {
     };
   });
 }
+// One field changed through the window as a person would (her volume slider): it must reach the
+// config, the file on disk, the overlay, and come back to the window in the status line.
+async function smokeSettingsChange(win) {
+  const target = config.load().volume === 0.3 ? 0.5 : 0.3;
+  await win.webContents.executeJavaScript(`(() => {
+    const range = document.getElementById('field-volume');
+    range.value = '${Math.round(target * 100)}';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  const poll = async (check, what) => {
+    for (let i = 0; i < 30; i++) {
+      if (await check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`settings change: ${what}`);
+  };
+  await poll(() => config.load().volume === target, 'config not updated');
+  await poll(() => JSON.parse(fs.readFileSync(config.file(), 'utf8')).volume === target, 'config file not written');
+  await poll(async () => (await overlay.webContents.executeJavaScript('window.dev?.voice?.volume')) === target, 'overlay not updated');
+  await poll(async () => (await win.webContents.executeJavaScript(
+    `(() => { const s = document.getElementById('status'); return Boolean(s.textContent) && !s.classList.contains('settings__status--error') && document.getElementById('field-volume').value; })()`)) === String(Math.round(target * 100)), 'window did not say it was saved');
+  return `volume=${target}`;
+}
+
 async function smokeSettings() {
   const ready = waitSettingsReady();
   const win = settings.open();
@@ -1002,6 +1141,7 @@ async function smokeSettings() {
   const kept = await win.webContents.executeJavaScript(
     `new Promise((r) => setTimeout(() => r(document.activeElement?.id || null), 300))`);
   if (kept !== 'menu-general') throw new Error(`focus lost when the settings were drawn again (${kept})`);
+  const changed = await smokeSettingsChange(win);
   // shown first (ready-to-show may come after the page said it's ready), then Escape, sent again
   // until it lands: on Xvfb or a CI desktop a key can go before the window really has the focus
   if (!win.isVisible()) await new Promise((resolve) => { win.once('show', resolve); setTimeout(resolve, 5000); });
@@ -1021,7 +1161,7 @@ async function smokeSettings() {
   await again;
   if (second === win) throw new Error('the closed settings window came back');
   settings.close();
-  console.log(`[capri] smoke settings: ok (sections=${info.sections}, focus=${info.focused}, windows=${windows})`);
+  console.log(`[capri] smoke settings: ok (sections=${info.sections}, focus=${info.focused}, windows=${windows}, ${changed})`);
 }
 
 // Only in --dev: lets scripts drive the overlay and grab frames of it (no desktop content, just our window).
@@ -1156,8 +1296,10 @@ async function debugHandler(route, body) {
 // How her window is drawn, set before Electron starts (her menu › Display). On some PCs her see-through
 // window shows up black (NVIDIA with FXAA, MFAA or HDR on, for one): drawing it through OpenGL, or
 // without the graphics card, often fixes it.
+let RENDER_AT_START = null; // the display mode she was started with (her settings say when a restart is due)
 function applyRender() {
   const { render } = config.load();
+  RENDER_AT_START = render || 'auto';
   if (render === 'gl') app.commandLine.appendSwitch('use-angle', 'gl');
   if (render === 'software') {
     app.disableHardwareAcceleration();
@@ -1165,6 +1307,22 @@ function applyRender() {
   }
   // --dev: what Chromium ended up drawing with
   if (DEV) app.whenReady().then(() => setTimeout(() => console.log('[capri] display:', render, JSON.stringify(app.getGPUFeatureStatus())), 4000));
+}
+
+// macOS: the keyboard shortcuts of text fields (Cmd+C, V, X, A, Z) come from the app's menu, and
+// without one they do nothing in her settings window (pasting a key). A small one, then: the app
+// with Quit, Edit, Window. Reload and DevTools only in --dev. Windows and Linux need none (her
+// windows have no menu bar).
+function appMenu() {
+  return Menu.buildFromTemplate([
+    { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
+    {
+      role: 'editMenu',
+      submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }],
+    },
+    { role: 'windowMenu', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+    ...(DEV ? [{ label: 'Dev', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }] }] : []),
+  ]);
 }
 
 function main() {
@@ -1179,6 +1337,7 @@ function main() {
   app.whenReady().then(() => {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
     if (process.platform === 'darwin') app.dock?.hide();
+    if (process.platform === 'darwin') Menu.setApplicationMenu(appMenu());
     serveProtocol();
     registerIpc();
     settings = createSettingsWindow({
