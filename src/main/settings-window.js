@@ -21,7 +21,8 @@ const BACKGROUND = '#17111e';
  */
 function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusApp = () => {}, onClosed = () => {} }) {
   let win = null;
-  const alive = () => Boolean(win && !win.isDestroyed());
+  // its page can go before the window does (closing, quitting): nothing is sent to it then
+  const alive = () => Boolean(win && !win.isDestroyed() && !win.webContents.isDestroyed?.());
 
   function bounds() {
     const a = area?.();

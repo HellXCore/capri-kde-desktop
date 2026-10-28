@@ -731,7 +731,7 @@ function registerIpc() {
     const cfg = config.load();
     console.log(`[capri] smoke ready: ${process.platform}/${process.arch} lang=${resolveLang(cfg.lang)} (${lang.langSetting(cfg.lang, LANGS)})`);
     smokeSettings().then(() => app.quit(), (err) => {
-      console.error('[capri] smoke settings failed:', err.message);
+      console.error('[capri] smoke settings failed:', err?.message ?? err);
       app.exit(1);
     });
   });
@@ -992,14 +992,28 @@ async function smokeSettings() {
   if (info?.sections !== 4) throw new Error(`settings shows ${info?.sections} sections`);
   if (settings.open() !== win) throw new Error('a second settings window opened');
   const windows = BrowserWindow.getAllWindows().length;
-  const closed = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Escape did not close the settings window')), 5000);
-    win.once('closed', () => { clearTimeout(timer); resolve(); });
-  });
-  win.webContents.focus();
-  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
-  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
-  await closed;
+  // its fonts come through tokens.css (@import): they must load from the settings page too
+  const fonts = await win.webContents.executeJavaScript(
+    `Promise.all(['700 16px "Chakra Petch"', '400 13px "JetBrains Mono"'].map((f) => document.fonts.load(f).then((l) => l.length)))`);
+  if (fonts.some((n) => !n)) throw new Error(`settings fonts did not load: ${fonts}`);
+  // drawn again with the focus on a control: the focus stays on it
+  await win.webContents.executeJavaScript(`document.getElementById('menu-general').focus()`);
+  settings.update();
+  const kept = await win.webContents.executeJavaScript(
+    `new Promise((r) => setTimeout(() => r(document.activeElement?.id || null), 300))`);
+  if (kept !== 'menu-general') throw new Error(`focus lost when the settings were drawn again (${kept})`);
+  // shown first (ready-to-show may come after the page said it's ready), then Escape, sent again
+  // until it lands: on Xvfb or a CI desktop a key can go before the window really has the focus
+  if (!win.isVisible()) await new Promise((resolve) => { win.once('show', resolve); setTimeout(resolve, 5000); });
+  let closed = false;
+  win.once('closed', () => { closed = true; });
+  for (let i = 0; i < 10 && !closed; i++) {
+    win.webContents.focus();
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!closed) throw new Error('Escape did not close the settings window');
   if (settings.isOpen() || !overlay || overlay.isDestroyed()) throw new Error('closing the settings touched the overlay');
   // opened again after closing: a new window, the one before is gone
   const again = waitSettingsReady();
