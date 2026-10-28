@@ -1,6 +1,7 @@
 // The transmission panel next to Capri, and the one-line ticker she wears while Claude works.
 
 import { clamp, ease, reducedMotion } from './util.js';
+import { keepFor } from './pause.js';
 
 const NOISE = '▚▞▙▟░▒#%&/\\<>01XZ';
 
@@ -57,6 +58,9 @@ export class Panel {
     this.tickerShownAt = 0;
     this.tickerTimer = null;
     this.missed = null; // a Claude message that came while you were chatting with her, shown after
+    this.paused = false; // your screen locked or asleep (pause.js)
+    this.kept = null;    // what mattered most of what came meanwhile, shown once you're back
+    this.holdLeft = null; // how long the message on screen had left when she paused (ms)
 
     // talking to her (chat.js): a line to type in, under her answer
     this.chatForm = panel.querySelector('.panel__chat');
@@ -105,6 +109,16 @@ export class Panel {
   // progress: a bar under the line, 0..1 (a download)
   // onLeave: () => void, when this message goes (closed, timed out or replaced)
   say(msg) {
+    // paused (screen locked, asleep): nothing goes up. What matters (done, an error, a prompt, a
+    // reminder: PRIORITY >= 3) is kept for when you're back, only the one that matters most (the
+    // newer one on a tie, as it would have replaced the other on screen); the rest is dropped.
+    if (this.paused) {
+      const kept = keepFor(this.kept, msg, PRIORITY);
+      if (kept === this.kept) return false;
+      this.kept?.onLeave?.();
+      this.kept = kept;
+      return true;
+    }
     const cur = this.current;
     // don't step on something more important that just appeared (one step of her guide follows another)
     const steps = cur?.guide && msg.guide;
@@ -188,6 +202,7 @@ export class Panel {
   // The numbers count up on twos, like her animation.
   renderReport(report) {
     clearInterval(this.countTimer);
+    this.countEnd = null;
     this.report.hidden = !report;
     if (!report) {
       this.report.replaceChildren();
@@ -236,6 +251,11 @@ export class Panel {
       return;
     }
     const t0 = performance.now();
+    this.countEnd = () => {
+      clearInterval(this.countTimer);
+      numbers.forEach((node) => show(node, 1));
+      this.countEnd = null;
+    };
     const step = () => {
       let counting = false;
       numbers.forEach((node, i) => {
@@ -243,7 +263,7 @@ export class Panel {
         show(node, ease.out(k));
         if (k < 1) counting = true;
       });
-      if (!counting) clearInterval(this.countTimer);
+      if (!counting) this.countEnd?.();
     };
     step();
     this.countTimer = setInterval(step, 1000 / 12);
@@ -300,6 +320,7 @@ export class Panel {
   chatTurn({ quote, face }) {
     if (!this.current?.chat) return;
     clearInterval(this.decodeTimer);
+    this.decodeEnd = null;
     this.stopStream();
     this.setFace(face);
     this.quote.textContent = quote;
@@ -324,7 +345,8 @@ export class Panel {
       this.streamShown = this.streamTo.length;
       return this.streamStep();
     }
-    this.streamTimer ??= setInterval(() => this.streamStep(), DECODE_STEP_MS);
+    if (this.paused) this.streamHeld = true; // unpause() starts it
+    else this.streamTimer ??= setInterval(() => this.streamStep(), DECODE_STEP_MS);
   }
 
   streamStep() {
@@ -354,6 +376,7 @@ export class Panel {
   stopStream() {
     clearInterval(this.streamTimer);
     this.streamTimer = null;
+    this.streamHeld = false;
     this.streamShown = 0;
     this.streamAt = [];
   }
@@ -431,6 +454,7 @@ export class Panel {
   hide() {
     clearTimeout(this.hideTimer);
     clearInterval(this.decodeTimer);
+    this.decodeEnd = null;
     this.stopStream();
     this.onTalk?.(false);
     if (this.el.hidden || this.leaving) return;
@@ -459,7 +483,49 @@ export class Panel {
 
   // Only drop a sticky alert (permission prompt) once it has been dealt with.
   clearKind(kind) {
+    if (this.kept?.kind === kind) this.kept = null; // dealt with while she was paused
     if (this.current?.kind === kind) this.hide();
+  }
+
+  // Screen locked or asleep (pause.js): the line decoding in, her report's numbers counting up
+  // and her answer streaming in are done at once (or wait), and the message on screen keeps the
+  // time it had left, so it isn't gone by the time you're back.
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.decodeEnd?.();
+    this.countEnd?.();
+    clearTimeout(this.tickerTimer);
+    this.tickerEl.hidden = true;
+    if (this.streamTimer) {
+      clearInterval(this.streamTimer);
+      this.streamTimer = null;
+      this.streamHeld = true;
+    }
+    this.holdLeft = null;
+    if (this.hideTimer && this.current?.hold && this.visible) {
+      this.holdLeft = Math.max(0, this.current.hold - (performance.now() - this.current.at));
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+
+  // Back after `gap` ms: the message on screen gets its time back (a little more to read it again),
+  // then what was kept goes up through say(), as anything would.
+  unpause(gap = 0) {
+    if (!this.paused) return;
+    this.paused = false;
+    if (this.current) this.current.at += gap;
+    if (this.holdLeft !== null && this.current && this.visible) {
+      this.hideTimer = setTimeout(() => this.hide(), Math.max(this.holdLeft, 2500));
+    }
+    this.holdLeft = null;
+    if (this.streamHeld && this.current?.chat) this.streamTimer ??= setInterval(() => this.streamStep(), DECODE_STEP_MS);
+    this.streamHeld = false;
+    const kept = this.kept;
+    this.kept = null;
+    if (kept) this.say(kept);
+    if (!this.visible && this.tickerAction) this.setTicker(this.tickerAction);
   }
 
   suspend() {
@@ -484,7 +550,8 @@ export class Panel {
 
   decode(text, kind) {
     clearInterval(this.decodeTimer);
-    if (reducedMotion.matches || !text) {
+    this.decodeEnd = null;
+    if (reducedMotion.matches || !text || this.paused) {
       this.line.textContent = text;
       return;
     }
@@ -500,11 +567,13 @@ export class Panel {
       }
       this.line.textContent = head + tail;
       if (chars[done - 1] && chars[done - 1] !== ' ') this.onChar?.(kind);
-      if (done >= chars.length) {
-        clearInterval(this.decodeTimer);
-        this.line.textContent = text;
-        this.onTalk?.(false);
-      }
+      if (done >= chars.length) this.decodeEnd?.();
+    };
+    this.decodeEnd = () => {
+      clearInterval(this.decodeTimer);
+      this.decodeEnd = null;
+      this.line.textContent = text;
+      this.onTalk?.(false);
     };
     step();
     this.decodeTimer = setInterval(step, DECODE_STEP_MS);
@@ -515,7 +584,8 @@ export class Panel {
   setTicker(action) {
     this.tickerAction = action;
     clearTimeout(this.tickerTimer);
-    if (!action || this.visible) {
+    // paused: Claude's tools aren't flashed over her head meanwhile, the last one is shown once back
+    if (!action || this.visible || this.paused) {
       this.tickerEl.hidden = true;
       return;
     }

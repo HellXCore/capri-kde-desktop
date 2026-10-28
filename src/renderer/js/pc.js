@@ -4,6 +4,7 @@
 
 import { fmt } from './util.js';
 import { pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 const HOT = 85; // % of the processor, for HOT_FOR
 const HOT_FOR = 15000;
@@ -44,8 +45,9 @@ export class Pc {
     this.plugs = null; // count of plug events seen (windows.ps1)
     this.plugAt = -Infinity;
     this.game = null;
-    setInterval(() => this.checkCpu(), 3000);
-    setInterval(() => this.checkGame(), 1000);
+    // not while your screen is locked or the computer asleep (pause.js)
+    pause.every(() => this.checkCpu(), 3000);
+    pause.every(() => this.checkGame(), 1000);
     this.watchBattery();
     window.addEventListener('offline', () => this.offline());
     window.addEventListener('online', () => this.online());

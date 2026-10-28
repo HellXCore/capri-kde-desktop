@@ -98,7 +98,10 @@ export class Initiative {
 
 // Something she shouldn't talk over with an optional line: her chat or guide open, an answer or
 // her report card you may be reading, a permission prompt, an error, a reminder.
+// Paused too (screen locked, asleep: pause.js): what she'd have said meanwhile isn't kept for
+// later, so her lines don't all come at once when you're back.
 export function occupied({ panel, chat, guide, capri } = {}) {
+  if (panel?.paused) return true;
   if (chat?.open || guide?.running || capri?.mode === 'alert') return true;
   if (!panel?.visible) return false;
   const cur = panel.current;

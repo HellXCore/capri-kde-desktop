@@ -28,6 +28,14 @@ body {
   display: none !important;
 }
 
+/* screen locked or the computer asleep (app.js, pause.js): her CSS animations (the ticker's blink,
+   the panel's glitches) hold still until you're back */
+html[data-paused='true'] *,
+html[data-paused='true'] *::before,
+html[data-paused='true'] *::after {
+  animation-play-state: paused !important;
+}
+
 /* ---------- Capri ---------- */
 
 .capri {

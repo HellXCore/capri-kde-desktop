@@ -3,6 +3,7 @@
 
 // CPU / GPU / wakeup baseline of the overlay in fixed states (docs/PERFORMANCE.md). macOS only.
 //   node scripts/perf-probe.js [--app <dir>] [--secs 60] [--warmup 10] [--port 47911] [--out file.json]
+//     [--states idle,paused,...] [--wait-unlock]
 // Starts `electron <app> --dev` with a throwaway --user-data-dir and its own CAPRI_PORT (never your
 // profile, never your hooks), drives it through the --dev debug routes and the hook bridge, and for
 // every state samples, over the same window:
@@ -16,6 +17,9 @@
 //     can't be counted from here: contextBridge hands the page a frozen `host`.)
 // The screen locked or the display off changes everything (WindowServer stops compositing): each
 // window says whether it was, and --wait-unlock holds every state until the screen is unlocked.
+// `paused` and `pausedWork` (CAPRI-07) put her in her locked-screen pause through the --dev route
+// /debug/power { away: true } without locking anything (the screen stays on, WindowServer still
+// composites): what her own pause saves, not what a real lock does on top of it.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -161,7 +165,8 @@ async function measure(mainPid, label) {
   // CSS animations running at the end of the window, and what she was doing (did the state hold?)
   const page = JSON.parse(await evalJs(`JSON.stringify({ css: document.getAnimations().filter((a) => a.playState === 'running').length,
     mode: window.dev.capri.mode, stance: window.dev.capri.stance, hidden: window.dev.capri.hidden, stowed: window.dev.capri.stowed,
-    dormant: window.dev.capri.dormant, chat: window.dev.chat.open, motion: document.documentElement.dataset.motion })`));
+    dormant: window.dev.capri.dormant, chat: window.dev.chat.open, motion: document.documentElement.dataset.motion,
+    paused: Boolean(window.dev.pause?.paused) })`));
   const g1 = gpuTimes();
   const after = processes(mainPid);
   const lockedAfter = locked();
@@ -252,7 +257,33 @@ const STATES = {
     await sleep(4000);
   },
 };
-const ORDER = ['idle', 'work', 'chat', 'hidden', 'reduced', 'sleep', 'dozed'];
+// her locked-screen pause, pretended (see the top)
+STATES.paused = async () => {
+  await evalJs(PREP);
+  await debug('power', { away: true });
+};
+STATES.pausedEnd = async () => {
+  await debug('power', { away: false });
+  await sleep(2000);
+};
+// paused while Claude Code works: its events still come in; its "done" goes up once she's back
+STATES.pausedWork = async (ctl) => {
+  await evalJs(PREP);
+  await debug('power', { away: true });
+  await STATES.work(ctl);
+};
+STATES.pausedWorkEnd = async (ctl) => {
+  clearInterval(ctl.loop);
+  await event('Stop', { last_assistant_message: 'Done.' });
+  await sleep(1000);
+  const during = await evalJs('JSON.stringify({ shown: !document.getElementById("panel").hidden, kept: window.dev.panel.kept?.kind || null })');
+  await debug('power', { away: false });
+  await sleep(8000); // her victory act first, then the panel
+  const after = await evalJs('JSON.stringify({ shown: !document.getElementById("panel").hidden, kind: window.dev.panel.current?.kind || null })');
+  console.log(JSON.stringify({ pausedWorkEnd: { during: JSON.parse(during), after: JSON.parse(after) } }));
+  await sleep(3000);
+};
+const ORDER = ['idle', 'work', 'chat', 'hidden', 'reduced', 'sleep', 'dozed', 'paused', 'pausedWork'];
 
 async function main() {
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-perf-'));
