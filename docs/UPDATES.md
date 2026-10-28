@@ -50,14 +50,19 @@ Code: `src/main/updates.js` (controller, transports, which installations update)
 electron-updater's `MacUpdater` (6.6.2, `out/MacUpdater.js`) downloads the zip and hands it to Electron's native
 `autoUpdater`, i.e. Squirrel.Mac, through a local proxy. Squirrel.Mac installs an update only when the new bundle's
 code signature satisfies the running app's designated requirement; Electron documents that the app must be signed
-for automatic updates on macOS. Our builds are not even ad-hoc *bundle*-signed: with
-`CSC_IDENTITY_AUTO_DISCOVERY=false` electron-builder skips signing, and the bundle carries only the linker's
-ad-hoc signature of the Electron executable:
+for automatic updates on macOS. Capri 0.2.1 explicitly ad-hoc signs the whole bundle and nested code,
+including the Swift window helper, with hardened runtime enabled. Its entitlements allow V8 JIT and loading
+bundled libraries without a shared Developer ID Team ID. The final bundle must pass
+`codesign --verify --deep --strict`; sealed resources and the `capri.desktop` identifier are also checked.
+CI extracts both ZIP and DMG, verifies each app, starts the ZIP app and confirms that modifying a resource is
+rejected. These are integrity checks, not Developer ID authentication or notarization.
 
-```
-$ codesign -dv Capri.app        → flags=0x20002(adhoc,linker-signed)  Sealed Resources=none  Identifier=Electron
-$ codesign --verify Capri.app   → code has no resources but signature indicates they must be present
-```
+Versions through 0.2.0 skipped bundle signing (`CSC_IDENTITY_AUTO_DISCOVERY=false` with no explicit identity).
+Only the Electron executable retained a linker signature. `codesign --verify` rejected it with
+"code has no resources but signature indicates they must be present"; Gatekeeper displayed "damaged" on a
+browser download. Those packages are superseded by 0.2.1. No quarantine removal or system protection changes
+are performed by the release verification scripts. First launch of an ad-hoc, non-notarized download remains
+subject to Gatekeeper and may require the user's explicit approval in macOS Privacy & Security.
 
 So Squirrel.Mac cannot accept these updates (an ad-hoc designated requirement is the cdhash, different in every
 build anyway). As Gustaf's Tauri updater does with its `.app.tar.gz`, `mac-update.js` installs by itself:
@@ -71,8 +76,7 @@ build anyway). As Gustaf's Tauri updater does with its `.app.tar.gz`, `mac-updat
    (`signature` error, nothing installed).
 4. On confirmation: `ditto -x -k` into `.Capri-update-staging` next to the bundle; exactly one `.app` inside;
    `CFBundleIdentifier` equal to the running app's (`capri.desktop`), `CFBundleShortVersionString` equal to the
-   offered version; `codesign -d` must find a signature (Apple Silicon runs no unsigned code; `--verify` cannot be
-   used, see above); `xattr -dr com.apple.quarantine`.
+   offered version; `codesign --verify --deep --strict` must verify the complete new bundle and nested code; `xattr -dr com.apple.quarantine`.
 5. The running bundle is renamed to `.Capri-previous.app`, the new one moved into its place (same folder: atomic
    renames); if the second rename fails the first is undone. Then `app.relaunch()` + `app.quit()`.
 6. The next start removes `.Capri-previous.app`, a leftover staging folder and old `capri-update-XXXXXX`

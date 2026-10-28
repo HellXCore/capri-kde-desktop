@@ -1,6 +1,6 @@
 {
   "name": "capri-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
   "repository": "github:Libes6/capri-desktop",
@@ -27,7 +27,8 @@
     "updater:smoke": "node scripts/updater-smoke.js",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:linux": "electron-builder --linux --x64 --publish never",
-    "dist:mac": "electron-builder --mac --arm64 --publish never"
+    "dist:mac": "electron-builder --mac --arm64 --publish never",
+    "verify:mac": "node scripts/verify-mac-artifacts.js"
   },
   "keywords": [
     "claude-code",
@@ -63,7 +64,10 @@
       "!src/main/mac/bin/**",
       "!scripts/before-pack.js",
       "!scripts/build-mac-helper.js",
-      "!scripts/updater-smoke.js"
+      "!scripts/updater-smoke.js",
+      "!scripts/after-sign.js",
+      "!scripts/verify-mac-signature.js",
+      "!scripts/verify-mac-artifacts.js"
     ],
     "asarUnpack": [
       "hooks/**",
@@ -116,7 +120,13 @@
       "hardenedRuntime": true,
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "Capri captures your screen only when you request screen analysis or a screenshot."
-      }
+      },
+      "identity": "-",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "binaries": [
+        "Contents/Resources/bin/capri-windows"
+      ]
     },
     "linux": {
       "target": [
@@ -155,6 +165,7 @@
         "libsecret-1-0",
         "x11-utils"
       ]
-    }
+    },
+    "afterSign": "scripts/after-sign.js"
   }
 }

@@ -54,6 +54,9 @@ jobs:
         run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify distributed macOS signatures
+        if: runner.os == 'macOS'
+        run: npm run verify:mac
       - name: Launch packaged app (Windows)
         if: runner.os == 'Windows'
         run: node scripts/smoke-test.js "${{ matrix.executable }}"

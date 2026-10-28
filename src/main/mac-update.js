@@ -136,10 +136,9 @@ function createMacInstaller({ exePath, tmpDir, download, relaunch, arch = proces
         ]);
         if (freshId !== id) throw new Error(`Update bundle id mismatch: ${freshId}`);
         if (freshVersion !== version) throw new Error(`Update bundle version mismatch: ${freshVersion} instead of ${version}`);
-        // signed at all (Apple Silicon runs no unsigned code). Not `codesign --verify`: these builds
-        // carry only the linker's ad-hoc signature of the executable, no sealed resources, so a
-        // verify fails on every one of them; the bytes are vouched for by the sha512 above.
-        await exec('/usr/bin/codesign', ['-d', fresh]).catch(() => { throw new Error('Update bundle check failed: the app is not signed'); });
+        // A displayable signature alone is insufficient: reject invalid seals or modified nested code.
+        await exec('/usr/bin/codesign', ['--verify', '--deep', '--strict', fresh])
+          .catch(() => { throw new Error('Update bundle check failed: invalid code signature'); });
         await exec('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', fresh]).catch(() => {});
         fs.rmSync(backup, { recursive: true, force: true });
         fs.renameSync(bundle, backup);

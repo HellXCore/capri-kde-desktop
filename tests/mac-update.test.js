@@ -42,7 +42,10 @@ function setup(t, { fresh = { id: 'capri.desktop', version: '0.2.0' }, codesignF
       const app = path.dirname(path.dirname(args[5]));
       return `${plist.get(app)?.[args[1]] ?? ''}\n`;
     }
-    if (cmd.endsWith('codesign') && codesignFails) throw new Error('code object is not signed at all');
+    if (cmd.endsWith('codesign')) {
+      assert.deepEqual(args.slice(0, 3), ['--verify', '--deep', '--strict']);
+      if (codesignFails) throw new Error('invalid signature or resource seal');
+    }
     return '';
   };
   let relaunched = 0;
@@ -100,7 +103,7 @@ test('a sha512 or size mismatch discards the download and installs nothing', asy
 for (const [name, opts, pattern] of [
   ['another bundle id', { fresh: { id: 'evil.app', version: '0.2.0' } }, /bundle id mismatch/],
   ['another version', { fresh: { id: 'capri.desktop', version: '0.1.9' } }, /bundle version mismatch/],
-  ['an unsigned app', { codesignFails: true }, /not signed/],
+  ['an unsigned or invalidly sealed app', { codesignFails: true }, /invalid code signature/],
   ['two apps in the zip', { apps: 2 }, /expected one app/],
 ]) {
   test(`${name}: refused, the running bundle untouched, nothing left behind`, async (t) => {
