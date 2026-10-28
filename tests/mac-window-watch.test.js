@@ -3,6 +3,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn: realSpawn } = require('node:child_process');
 const { parseLine, toUpdate, overlayWindowId, startMacWindowWatch } = require('../src/main/mac/window-watch');
 
 const line = (o) => JSON.stringify({ v: 1, fg: null, displays: [], wins: [], ...o });
@@ -112,7 +116,7 @@ test('mac watch: helper lines become updates; restarts are bounded', (t) => {
 
       // a helper that keeps dying is restarted three times, then left alone
       for (let i = 0; i < 5; i++) {
-        calls.at(-1).child.emit('exit', 1);
+        calls.at(-1).child.emit('close', 1);
         t.mock.timers.tick(3000);
       }
       assert.equal(calls.length, 4);
@@ -121,10 +125,96 @@ test('mac watch: helper lines become updates; restarts are bounded', (t) => {
       const again = startMacWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, helper: __filename, spawn: fakeSpawn(calls), log() {} });
       again.stop();
       assert.equal(calls.at(-1).child.killed, true);
-      calls.at(-1).child.emit('exit', null);
+      calls.at(-1).child.emit('close', null);
       t.mock.timers.tick(3000);
       assert.equal(calls.length, 5);
       resolve();
     });
   });
+});
+
+test('mac watch: a JSON line split across stdout chunks is joined before parsing', async () => {
+  const calls = [];
+  const updates = [];
+  startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u), helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  const full = line({ fg: 5, wins: [{ id: 5, x: 10, y: 20, w: 300, h: 200 }] });
+  const out = calls[0].child.stdout;
+  out.write(full.slice(0, 17));
+  await new Promise(setImmediate);
+  assert.equal(updates.length, 0);
+  out.write(`${full.slice(17)}\n${full.slice(0, 5)}`);
+  await new Promise(setImmediate);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].fg, 5);
+});
+
+test('mac watch: onState follows the helper like the Windows/Linux watchers', async (t) => {
+  const states = [];
+  startMacWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok),
+    helper: '/nonexistent/capri-windows', spawn: fakeSpawn([]), log() {} });
+  assert.deepEqual(states, [false]); // no helper: tracking off, the base overlay stays
+
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  states.length = 0;
+  const calls = [];
+  startMacWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  calls[0].child.stdout.write('garbage\n');
+  await new Promise(setImmediate);
+  assert.deepEqual(states, []); // not a snapshot: not running yet
+  calls[0].child.stdout.write(`${line({})}\n${line({ fg: 3 })}\n`);
+  await new Promise(setImmediate);
+  assert.deepEqual(states, [true]); // once per helper run, not per line
+  for (let i = 0; i < 4; i++) {
+    calls.at(-1).child.emit('close', 1);
+    t.mock.timers.tick(3000);
+  }
+  assert.equal(calls.length, 4);
+  assert.deepEqual(states, [true, false]); // gave up after three restarts
+});
+
+test('mac watch: stop() during a pending restart spawns nothing more, later lines are ignored', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const calls = [];
+  const updates = [];
+  const watch = startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  calls[0].child.emit('close', 1); // the helper died: a restart is pending
+  watch.stop();
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 1);
+
+  const again = startMacWindowWatch({ overlay: fakeOverlay(), onUpdate: (u) => updates.push(u),
+    helper: __filename, spawn: fakeSpawn(calls), log() {} });
+  again.stop();
+  calls.at(-1).child.stdout.write(`${line({ fg: 1 })}\n`);
+  return new Promise((resolve) => setImmediate(() => {
+    assert.equal(updates.length, 0);
+    resolve();
+  }));
+});
+
+test('mac watch: a helper that cannot be executed (no exit event) is still retried, then given up', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-mac-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const helper = path.join(dir, 'capri-windows');
+  fs.writeFileSync(helper, '#!/bin/sh\n', { mode: 0o644 }); // present but not executable: EACCES
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const children = [];
+  const states = [];
+  const logs = [];
+  const spawn = (...a) => {
+    const c = realSpawn(...a);
+    children.push(new Promise((r) => c.once('close', r)));
+    return c;
+  };
+  startMacWindowWatch({ overlay: fakeOverlay(), onUpdate() {}, onState: (ok) => states.push(ok), helper, spawn, log: (...a) => logs.push(a.join(' ')) });
+  for (let i = 0; i < 4; i++) {
+    await children[i];
+    await new Promise(setImmediate);
+    t.mock.timers.tick(3000);
+  }
+  assert.equal(children.length, 4);
+  assert.deepEqual(states, [false]);
+  assert.ok(logs.some((l) => /EACCES/.test(l)));
 });
