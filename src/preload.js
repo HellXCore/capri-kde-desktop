@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('host', {
   onWindows: on('windows:update'),
   onPower: on('power:state'), // { away, why }: screen locked or asleep (CAPRI-07)
   setInteractive: (on) => ipcRenderer.send('overlay:interactive', Boolean(on)),
+  setShape: (rects) => ipcRenderer.send('overlay:shape', rects), // specifies the exact rectangles of interactive elements to the X server (and to the wayland compositor via `wl_surface.set_input_region`)
   rearm: () => ipcRenderer.send('overlay:rearm'),
   cursor: () => ipcRenderer.invoke('overlay:cursor'),
   screens: () => ipcRenderer.invoke('screens:list'),

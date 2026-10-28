@@ -100,6 +100,45 @@ async function boot() {
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang, assistant: config.assistant });
   brain.caps = config.caps || {}; // what works on this computer (main's capabilities.js): guide, setup, chat
 
+  // Sync interactive window areas on Linux (XWayland)
+  let shapeRaf = 0;
+  const updateShapes = () => {
+    shapeRaf = 0;
+    if (config.platform !== 'linux') return;
+    if (capri.dragging) {
+      host.setShape([]); // the entire screen is interactive during dragging
+      return;
+    }
+    const rects = [];
+
+    // 1. Capri’s Body
+    if (!capri.hidden && !capri.stowed && !capri.dormant && capri.p.alpha > 0.1) {
+      rects.push(capri.bounds());
+    }
+    // 2. Dialog panel
+    if (panel.visible) {
+      const r = panel.rect();
+      if (r && r.width > 0 && r.height > 0) {
+        rects.push({ x: r.left, y: r.top, width: r.width, height: r.height });
+      }
+    }
+    // 3. Biochip in the corner
+    if (chip.visible) {
+      rects.push({ x: chip.x, y: chip.y, width: chip.w, height: chip.h });
+    }
+    // 4. Sleep mode mask
+    if (mask.visible) {
+      rects.push({ x: mask.x, y: mask.y, width: mask.w, height: mask.h });
+    }
+
+    host.setShape(rects.length ? rects : [{ x: -100, y: -100, width: 1, height: 1 }]);
+  };
+
+  const scheduleUpdateShapes = () => {
+    if (config.platform !== 'linux' || shapeRaf) return;
+    shapeRaf = requestAnimationFrame(updateShapes);
+  };
+
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
   let mouse = null;
@@ -148,6 +187,10 @@ async function boot() {
     mouse = { x: e.clientX, y: e.clientY };
     refreshHit();
     hoverChip();
+    scheduleUpdateShapes();
+  });
+  window.addEventListener('mouseup', () => {
+    scheduleUpdateShapes();
   });
   document.addEventListener('mouseleave', () => {
     mouse = null;
@@ -176,9 +219,7 @@ async function boot() {
       follow?.(at);
     }
     if (config.platform === 'linux') {
-      mouse = at?.inside ? { x: at.x, y: at.y } : null;
-      refreshHit();
-      hoverChip();
+      scheduleUpdateShapes();
       return;
     }
     if (!at?.inside) return;
@@ -207,14 +248,19 @@ async function boot() {
     panel.setAnchor({ ...head, lean: capri.pointing ? -capri.pointing.dir : 0 }, capri.view);
     // she may have moved out from under a still pointer: never leave a dead click zone behind
     refreshHit();
+    scheduleUpdateShapes();
   };
   capri.onTeleport = (phase) => (phase === 'start' ? panel.suspend() : panel.resume());
   capri.chipAt = () => chip.center();
   capri.onStow = () => {
     chip.setMode(capri.mode);
     chip.show();
+    scheduleUpdateShapes();
   };
-  capri.onUnstow = () => chip.hide();
+  capri.onUnstow = () => {
+    chip.hide();
+    scheduleUpdateShapes();
+  };
   capri.onDoze = (phase, face) => {
     if (phase === 'start') {
       mask.place(face.x, face.y, capri.scale * 1.1);
@@ -224,6 +270,7 @@ async function boot() {
     } else {
       mask.hide();
     }
+    scheduleUpdateShapes();
   };
   capri.onMode = (mode, prev) => chip.setMode(mode, prev);
   // now and then she says something about the satellite: while she looks at it, or once
@@ -656,6 +703,7 @@ async function boot() {
     fx.resize(innerWidth, innerHeight);
     chip.place(innerWidth, innerHeight - floorGap);
     capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
+    scheduleUpdateShapes();
   });
 
   host.onConfig((cfg) => {

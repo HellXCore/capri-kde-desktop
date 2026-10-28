@@ -402,6 +402,18 @@ export class Capri {
     }
   }
 
+  bounds() {
+    const s = this.scale;
+    const P = this.pivotPoint();
+    const o = this.flat(P.x, P.y);
+    return {
+      x: Math.round(o.x - (SPRITE.pad + P.x) * s),
+      y: Math.round(o.y - (SPRITE.pad + P.y) * s),
+      width: Math.round((SPRITE.width + SPRITE.pad * 2) * s),
+      height: Math.round((SPRITE.height + SPRITE.pad * 2) * s),
+    };
+  }
+
   // ---------- windows ----------
 
   setWindows(data) {

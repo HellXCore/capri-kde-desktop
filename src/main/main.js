@@ -1,3 +1,9 @@
+// A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
+if (process.platform === 'linux') {
+  const { app } = require('electron');
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
+
 'use strict';
 
 const path = require('node:path');
@@ -43,8 +49,6 @@ if (SMOKE) {
   if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
   setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
 }
-// A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
-if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 
@@ -171,12 +175,13 @@ function fitOverlay() {
 // clicked anymore. Off then on puts in a new one; her place on top and her size are set again too.
 function rearmOverlay() {
   if (!overlay || overlay.isDestroyed()) return;
-  overlay.setIgnoreMouseEvents(false);
-  overlay.setIgnoreMouseEvents(true, process.platform === 'linux' ? undefined : { forward: true });
+  if (process.platform !== 'linux') {
+    overlay.setIgnoreMouseEvents(false);
+    overlay.setIgnoreMouseEvents(true, { forward: true });
+  }
   overlay.setAlwaysOnTop(true, 'screen-saver');
   fitOverlay();
-  sendCommand('rearmed'); // click-through again: she waits for the pointer to be on her
-  console.log('[capri] mouse hook set up again');
+  sendCommand('rearmed');
 }
 
 // Back on top of everything, the taskbar included (it comes up over her when it's clicked). Twice:
@@ -222,7 +227,13 @@ function createOverlay() {
   if (process.platform === 'darwin') {
     overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
-  overlay.setIgnoreMouseEvents(true, process.platform === 'linux' ? undefined : { forward: true });
+  if (process.platform !== 'linux') {
+    overlay.setIgnoreMouseEvents(true, { forward: true });
+  } else {
+    // On Linux, we immediately set an invisible region before the first render,
+    // so that the window doesn't intercept clicks across the entire screen
+    overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]);
+  }
   overlay.loadURL('capri://app/src/renderer/index.html');
   // always shown: put away, she's still there as her biochip in the corner. Sized again first:
   // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
@@ -884,7 +895,25 @@ function registerIpc() {
     });
   });
   ipcMain.on('overlay:interactive', (_e, on) => {
-    overlay?.setIgnoreMouseEvents(!on, process.platform === 'linux' ? undefined : { forward: true });
+    if (process.platform !== 'linux') {
+      overlay?.setIgnoreMouseEvents(!on, { forward: true });
+    }
+  });
+  ipcMain.on('overlay:shape', (_e, rects) => {
+    if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
+    if (!rects || rects.length === 0) {
+      overlay.setShape([]); // mask reset (the entire screen is interactive, for example during dragging)
+    } else {
+      const valid = rects
+        .map((r) => ({
+          x: Math.round(r.x),
+          y: Math.round(r.y),
+          width: Math.max(1, Math.round(r.width)),
+          height: Math.max(1, Math.round(r.height)),
+        }))
+        .filter((r) => r.width > 0 && r.height > 0);
+      overlay.setShape(valid.length > 0 ? valid : [{ x: -100, y: -100, width: 1, height: 1 }]);
+    }
   });
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
