@@ -2,10 +2,12 @@
 
 import { linesFor, ASSISTANT_NAMES } from './lines.js';
 import { pick, fmt, duration, basename, rand } from './util.js';
+import { pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 const HACKING_TOOLS = new Set(['Bash', 'PowerShell', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
-const WORKING_EVERY = 20; // say something about progress every N tool calls
+const WORKING_EVERY = 20; // say something about progress every N tool calls (at the normal initiative)
 const LONG_JOB_MS = 8 * 60 * 1000; // a job this long (or this busy) earns the whole satellite sequence
 const LONG_JOB_ACTIONS = 50;
 // mid-task with not a word from Claude: this long and the ticker starts counting (it's thinking),
@@ -15,7 +17,7 @@ const THINK_SAY = 40000;
 const THINK_LONG = 120000;
 
 export class Brain {
-  constructor({ capri, panel, voice, host, mission, lang = 'fr', assistant = 'claude' }) {
+  constructor({ capri, panel, voice, host, mission, lang = 'en', assistant = 'claude' }) {
     this.capri = capri;
     this.panel = panel;
     this.voice = voice;
@@ -33,6 +35,7 @@ export class Brain {
     this.watching = true;   // she follows Claude Code (her menu; off, she just keeps you company)
     this.thinkTimer = 0;
     this.thinking = null;   // { s, since, said, fidget, gazed } while Claude is quiet mid-task
+    this.initiative = null; // how much she speaks up on her own (initiative.js); none: as always
   }
 
   get t() {
@@ -63,6 +66,12 @@ export class Brain {
 
   say(kind, line, s, extra = {}) {
     return this.panel.say({ kind, line, tag: s ? s.title || s.project : '', ...extra });
+  }
+
+  // One of her optional lines (a kind of initiative.js): said only if her initiative lets it.
+  // show() puts it up (and returns what panel.say did).
+  optional(kind, show) {
+    return this.initiative ? this.initiative.offer(kind, show) : show() !== false;
   }
 
   // today's log, for real events only: the demo's don't go on her report card
@@ -118,10 +127,10 @@ export class Brain {
           this.panel.setTicker(null);
           this.capri.setMode('idle');
         }
-        return this.say('info', pick(this.t.interrupted), s, { face: 'wide', hold: 4000 });
+        return this.say('info', pickLine(this.t.interrupted), s, { face: 'wide', hold: 4000 });
       case 'SubagentStart': return this.onSubagent(evt, s, true);
       case 'SubagentStop': return this.onSubagent(evt, s, false);
-      case 'PreCompact': return this.say('info', pick(this.t.compact), s, { face: 'aside', hold: 4000 });
+      case 'PreCompact': return this.optional('session', () => this.say('info', pickLine(this.t.compact), s, { face: 'aside', hold: 4000 }));
       case 'SessionEnd': return this.onSessionEnd(evt, s);
       default: return undefined;
     }
@@ -130,9 +139,13 @@ export class Brain {
   onSessionStart(evt, s) {
     if (evt.source === 'clear' || evt.source === 'compact') return;
     const lines = evt.source === 'resume' ? this.t.resume : this.t.hello;
-    this.voice.play('hello');
-    this.capri.perform('curious', this.capri.towardCenter());
-    this.say('info', fmt(pick(lines), { project: s.project }), s, { face: pick(['grin', 'look']), hold: 5000 });
+    this.optional('session', () => {
+      const shown = this.say('info', fmt(pickLine(lines), { project: s.project }), s, { face: pick(['grin', 'look']), hold: 5000 });
+      if (shown === false) return false;
+      this.voice.play('hello');
+      this.capri.perform('curious', this.capri.towardCenter());
+      return true;
+    });
   }
 
   onPrompt(evt, s) {
@@ -142,14 +155,25 @@ export class Brain {
     this.tally(evt)?.prompt(s.project);
     this.capri.goToWork(); // perched on the window in front if she can, else her corner
     const prompt = String(evt.prompt || '').replace(/\s+/g, ' ').trim();
-    this.say('work', pick(this.t.prompt), s, { quote: prompt ? clip(prompt, 110) : '', hold: 4500 });
+    this.say('work', pickLine(this.t.prompt), s, { quote: prompt ? clip(prompt, 110) : '', hold: 4500 });
     this.watchThinking();
   }
 
   // Mid-task and nothing from Claude for a while: it's thinking (a big question, a slow local
   // model). The ticker counts the seconds and she keeps herself busy, so you can tell nothing froze.
+  // Not while your screen is locked or the computer asleep (pause.js): the timer stops, and starts
+  // again once you're back if Claude is still at it.
   watchThinking() {
-    if (!this.thinkTimer) this.thinkTimer = setInterval(() => this.thinkTick(), 1000);
+    if (!this.thinkTimer && !pause.paused) this.thinkTimer = setInterval(() => this.thinkTick(), 1000);
+    if (!this.thinkResume) {
+      this.thinkResume = pause.on({
+        pause: () => {
+          clearInterval(this.thinkTimer);
+          this.thinkTimer = 0;
+        },
+        resume: () => this.busySessions.length && this.watchThinking(),
+      });
+    }
   }
 
   thinkTick() {
@@ -183,11 +207,11 @@ export class Brain {
     }
     if (th.said < 1 && quiet >= THINK_SAY) {
       th.said = 1;
-      this.say('work', pick(t.hmm), s, { face: 'aside', hold: 4000 });
+      this.optional('progress', () => this.say('work', pickLine(t.hmm), s, { face: 'aside', hold: 4000 }));
     }
     if (th.said < 2 && quiet >= THINK_LONG) {
       th.said = 2;
-      this.say('info', pick(t.long), s, { face: 'smug', quote: t.longHow, hold: 8000 });
+      this.say('info', pickLine(t.long), s, { face: 'smug', quote: t.longHow, hold: 8000 });
     }
   }
 
@@ -211,8 +235,9 @@ export class Brain {
     if (HACKING_TOOLS.has(evt.tool_name)) this.capri.spark(); // red sparks: she's in the system
     this.panel.setTicker(action);
     if (this.panel.current?.kind === 'work') this.panel.updateLog(s.log);
-    if (s.count % WORKING_EVERY === 0) {
-      this.say('work', fmt(pick(this.t.working), { count: s.count }), s, { log: s.log, hold: 4000 });
+    const every = this.initiative ? this.initiative.every(WORKING_EVERY) : WORKING_EVERY;
+    if (s.count % every === 0) {
+      this.optional('progress', () => this.say('work', fmt(pickLine(this.t.working), { count: s.count }), s, { log: s.log, hold: 4000 }));
     }
   }
 
@@ -220,7 +245,7 @@ export class Brain {
     const action = { ...this.describe(evt), error: true };
     s.log.push(action);
     if (evt.is_interrupt) {
-      this.say('info', pick(this.t.interrupted), s, { face: 'wide', hold: 4000 });
+      this.say('info', pickLine(this.t.interrupted), s, { face: 'wide', hold: 4000 });
       return;
     }
     // "Exit code 1" says nothing; the next line usually does
@@ -229,7 +254,7 @@ export class Brain {
     this.tally(evt)?.error();
     this.capri.hurt();
     this.voice.play('error');
-    this.say('error', fmt(pick(this.t.error), { tool: evt.tool_name || this.t.someTool }), s, {
+    this.say('error', fmt(pickLine(this.t.error), { tool: evt.tool_name || this.t.someTool }), s, {
       face: pick(['laugh', 'wide']), // a failure: she laughs at the chaos, or it caught her off guard
       log: [action, { verb: '✕', target: clip(firstLine, 70), error: true }],
       hold: 5500,
@@ -247,12 +272,12 @@ export class Brain {
       const win = this.away(s) && this.capri.windows.wins.find((w) => w.id === s.window);
       if (win && this.capri.canPoint(win)) {
         const quote = [this.t.guide.permissionThere, evt.message].filter(Boolean).join('\n');
-        this.say('alert', pick(this.t.permission), s, { quote, hold: null });
+        this.say('alert', pickLine(this.t.permission), s, { quote, hold: null });
         s.pointedAt = await this.capri.pointAt(win, { label: this.t.guide.labels.claude });
         if (!s.waiting && s.pointedAt) this.capri.stopPointing(); // answered while she was on her way
         return;
       }
-      this.say('alert', pick(this.t.permission), s, { quote: evt.message || '', hold: null });
+      this.say('alert', pickLine(this.t.permission), s, { quote: evt.message || '', hold: null });
       // next to your pointer, even on another screen
       const near = await this.capri.toPointer(await this.host.cursor().catch(() => null));
       const toward = near?.inside ? Math.sign(near.x - this.capri.pos.x) || 1 : this.capri.towardCenter();
@@ -261,7 +286,7 @@ export class Brain {
     }
     if (type === 'idle_prompt') {
       this.voice.play('tick');
-      this.say('info', pick(this.t.waiting), s, { face: 'smug', hold: 6000 });
+      this.say('info', pickLine(this.t.waiting), s, { face: 'smug', hold: 6000 });
       return;
     }
     if (evt.message) this.say('info', evt.message, s, { hold: 5000 });
@@ -291,8 +316,8 @@ export class Brain {
     const reply = this.away(s) ? readable(evt.last_assistant_message || '') : '';
     const done = (extra) => {
       if (reply) this.replyFor = s;
-      if (reply) this.say('done', pick(this.t.reply), s, { ...extra, reply, hold: null });
-      else this.say('done', pick(this.t.done), s, { ...extra, quote: clip(quote, 150) });
+      if (reply) this.say('done', pickLine(this.t.reply), s, { ...extra, reply, hold: null });
+      else this.say('done', pickLine(this.t.done), s, { ...extra, quote: clip(quote, 150) });
     };
     if (!wasWorking && !s.count) {
       // a Stop with nothing before it: just say it quietly
@@ -334,12 +359,12 @@ export class Brain {
     this.capri.hurt();
     this.voice.play('error');
     const detail = evt.error || evt.message || '';
-    this.say('error', pick(this.t.crashed), s, { face: 'wide', quote: clip(String(detail), 120), hold: 9000 });
+    this.say('error', pickLine(this.t.crashed), s, { face: 'wide', quote: clip(String(detail), 120), hold: 9000 });
   }
 
   onSubagent(evt, s, starting) {
     const agent = evt.agent_type || this.t.someAgent;
-    const line = fmt(pick(starting ? this.t.subagentStart : this.t.subagentStop), { agent });
+    const line = fmt(pickLine(starting ? this.t.subagentStart : this.t.subagentStop), { agent });
     const action = { verb: starting ? '↗' : '↘', target: line };
     s.log.push(action);
     this.panel.setTicker(action);
@@ -351,7 +376,7 @@ export class Brain {
       this.panel.setTicker(null);
       this.capri.setMode('idle');
     }
-    this.say('info', fmt(pick(this.t.bye), { project: s.project }), s, { face: 'aside', hold: 4000 });
+    this.optional('session', () => this.say('info', fmt(pickLine(this.t.bye), { project: s.project }), s, { face: 'aside', hold: 4000 }));
   }
 
   // Something to say with nothing going on: one of your lines half the time, if you wrote some, and
@@ -359,9 +384,9 @@ export class Brain {
   idleLine() {
     const mine = this.custom.myLines || [];
     const close = this.t.bond.idle[this.bond?.stage || 0] || [];
-    let line = pick(this.t.idle);
-    if (mine.length && Math.random() < 0.5) line = pick(mine);
-    else if (close.length && Math.random() < 0.4) line = pick(close);
+    let line = pickLine(this.t.idle);
+    if (mine.length && Math.random() < 0.5) line = pickLine(mine);
+    else if (close.length && Math.random() < 0.4) line = pickLine(close);
     return fmt(line, { name: this.custom.userName || 'choom' });
   }
 
@@ -369,9 +394,9 @@ export class Brain {
   // knows you a little), else with your name, if she knows it.
   onlineLine() {
     const away = this.bond?.away || 0;
-    if (away >= 2 && this.bond.stage >= 1) return fmt(pick(this.t.bond.missed), { days: away });
+    if (away >= 2 && this.bond.stage >= 1) return fmt(pickLine(this.t.bond.missed), { days: away });
     const name = this.custom.userName;
-    return name ? fmt(pick(this.t.custom.onlineName), { name }) : pick(this.t.online);
+    return name ? fmt(pickLine(this.t.custom.onlineName), { name }) : pickLine(this.t.online);
   }
 
   // What she says when you click her. Nothing going on: she offers to talk (chat.js).
@@ -410,7 +435,7 @@ export class Brain {
     const d = this.mission.day;
     const t = this.t.report;
     if (!d.missions && !d.prompts) {
-      this.say('idle', pick(t.lines.none), null, { face: 'aside', hold: 6000 });
+      this.say('idle', pickLine(t.lines.none), null, { face: 'aside', hold: 6000 });
       return false;
     }
     const tier = d.missions >= 10 || d.actions >= 300 ? 'big' : d.missions < 3 ? 'light' : 'good';
@@ -418,7 +443,7 @@ export class Brain {
       const ok = await this.panel.snapshot((rect) => this.host.copyImage(rect)).catch(() => false);
       this.panel.relabel('copy', ok ? t.copied : t.copyFailed);
     };
-    return this.say('report', pick(t.lines[tier]), null, {
+    return this.say('report', pickLine(t.lines[tier]), null, {
       badge: t.badge,
       face: tier === 'big' ? 'laugh' : 'smug',
       report: {

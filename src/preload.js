@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('host', {
   onConfig: on('capri:config'),
   onResize: on('overlay:resize'),
   onWindows: on('windows:update'),
+  onPower: on('power:state'), // { away, why }: screen locked or asleep (CAPRI-07)
   setInteractive: (on) => ipcRenderer.send('overlay:interactive', Boolean(on)),
   rearm: () => ipcRenderer.send('overlay:rearm'),
   cursor: () => ipcRenderer.invoke('overlay:cursor'),

@@ -9,7 +9,7 @@
 
 import { SpriteRenderer, SPRITE } from './sprite.js';
 import { ACTS, NEUTRAL, Player } from './acting.js';
-import { sleep, rand, pick, clamp, lerp, ease, tween, reducedMotion, today } from './util.js';
+import { sleep, rand, pick, clamp, lerp, ease, tween, reducedMotion, today, frameIn } from './util.js';
 
 const ON_TWOS = 1000 / 12;
 const ON_ONES = 1000 / 24;
@@ -124,7 +124,75 @@ export class Capri {
     this.setScale(this.scale);
     this.bindPointer();
     this.loop = this.loop.bind(this);
-    requestAnimationFrame(this.loop);
+    this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.looping = true;
+    this.schedule();
+  }
+
+  // Busy, hidden, her stance, her mode and her acts set how often she's drawn (interval): when one
+  // changes, the frame the loop waits for is planned again, so going faster never waits on the slower beat.
+  get busy() {
+    return this._busy;
+  }
+
+  set busy(on) {
+    if (on === this._busy) return;
+    this._busy = on;
+    this.kick();
+  }
+
+  // Put away or down to her mask: nothing of her to draw, the loop stops until she's back.
+  get hidden() {
+    return this._hidden;
+  }
+
+  set hidden(on) {
+    if (on === this._hidden) return;
+    this._hidden = on;
+    this.kick();
+  }
+
+  // Your screen locked or the computer asleep (pause.js): the loop stops as when she's hidden,
+  // and nothing of her changes meanwhile. Her clocks are noted, for shiftClock().
+  get paused() {
+    return this._paused;
+  }
+
+  set paused(on) {
+    if (on === this._paused) return;
+    this._paused = on;
+    if (on) this.frozen = this.clocks().map(([o, k]) => [o, k, o[k]]);
+    this.kick();
+  }
+
+  // The moments her behaviour runs on: [object, key].
+  clocks() {
+    const out = [];
+    const add = (o, keys) => {
+      if (o) for (const k of keys) out.push([o, k]);
+    };
+    add(this, ['lastDraw', 'lastActivity', 'nextTwitch', 'nextMove', 'nextGaze', 'nextShed', 'nextNotice',
+      'peekUntil', 'lastGlyph', 'sleptAt', 'nextHome', 'lastFall', 'refuseUntil']);
+    add(this.base, ['start']);
+    add(this.act?.player, ['start']);
+    add(this.held, ['last']);
+    add(this.flight, ['last', 'freezeUntil']);
+    add(this.skid, ['last']);
+    return out;
+  }
+
+  // Back after `gap` ms paused: the clocks noted when she paused, and untouched since, are pushed
+  // on by it, as if no time had gone by. What was due during the pause (a twitch, a wander, falling
+  // asleep, the end of an act) doesn't all come due at once, and a fall or a throw goes on from
+  // where it was (their steps are capped too). One set while she was paused (Claude's events still
+  // come) is already on the real clock and stays as it is.
+  shiftClock(gap) {
+    const frozen = this.frozen || [];
+    this.frozen = null;
+    if (!(gap > 0)) return;
+    for (const [o, k, v] of frozen) {
+      if (o[k] === v && Number.isFinite(v) && v > 0) o[k] = v + gap;
+    }
   }
 
   // ---------- geometry ----------
@@ -416,12 +484,28 @@ export class Capri {
     return this.mode === 'sleep' ? ASLEEP : ON_TWOS;
   }
 
+  // Drawn on twos (ones while she moves fast, sixes asleep): woken for the refresh her next drawing is
+  // due on, not for every refresh in between (see frameIn).
   loop(now) {
-    requestAnimationFrame(this.loop);
-    if (this.hidden) return;
-    if (now - this.lastDraw < this.interval() - 1) return;
-    this.drawFrame(now);
-    this.behave(now);
+    this.nextFrame = null;
+    if (this.hidden || this.paused) return;
+    if (now - this.lastDraw >= this.interval() - 1) {
+      this.drawFrame(now);
+      this.behave(now);
+    }
+    this.schedule();
+  }
+
+  schedule() {
+    if (this.nextFrame || this.hidden || this.paused) return;
+    this.nextFrame = frameIn(this.lastDraw + this.interval() - performance.now(), this.loop);
+  }
+
+  kick() {
+    if (!this.looping) return;
+    this.nextFrame?.();
+    this.nextFrame = null;
+    this.schedule();
   }
 
   drawFrame(now = performance.now()) {
@@ -606,6 +690,7 @@ export class Capri {
     this.endAct(false);
     return new Promise((done) => {
       this.act = { player: next, done };
+      this.kick(); // an act on ones
     });
   }
 
@@ -627,6 +712,7 @@ export class Capri {
     if (stance !== 'down') this.lying = null;
     this.base = this.restBase(dir);
     this.pivot();
+    this.kick(); // held, thrown or falling: drawn on ones
   }
 
   // The cycle under her acts: her stance's, or holding her arm out at what she's showing you.
@@ -656,6 +742,7 @@ export class Capri {
     const prev = this.mode;
     this.mode = mode;
     if (mode === 'sleep') this.sleptAt = now;
+    this.kick(); // asleep on sixes, awake on twos
     this.onMode?.(mode, prev);
     if (this.stance === 'stand') this.base = this.restBase();
     const p = this.p;

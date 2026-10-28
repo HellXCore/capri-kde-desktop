@@ -14,7 +14,9 @@ import { Reminders, clock } from './reminders.js';
 import { Look } from './look.js';
 import { Pc } from './pc.js';
 import { linesFor } from './lines.js';
-import { pick, fmt, reducedMotion } from './util.js';
+import { fmt, reducedMotion } from './util.js';
+import { Initiative, occupied, pickLine } from './initiative.js';
+import { pause } from './pause.js';
 
 const host = window.host;
 
@@ -89,13 +91,14 @@ async function boot() {
     voice,
   });
   capri.wander = config.wander;
-  capri.possessWindows = config.possess;
+  capri.possessWindows = config.possess && Boolean(config.caps?.possess);
   capri.restOn = config.rest || 'corner';
   capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
   capri.setScale(config.scale);
 
   const mission = new Mission();
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang, assistant: config.assistant });
+  brain.caps = config.caps || {}; // what works on this computer (main's capabilities.js): guide, setup, chat
 
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
@@ -159,7 +162,8 @@ async function boot() {
   let cursorPending = false;
   let rearmedAt = -Infinity;
   let follow = null; // (pointer) => she may follow it to another screen (below)
-  setInterval(async () => {
+  // (not while your screen is locked or the computer asleep: pause.js)
+  pause.every(async () => {
     if (cursorPending) return;
     cursorPending = true;
     const at = await host.cursor().catch(() => null);
@@ -226,7 +230,8 @@ async function boot() {
   // the red light has gone up (never during, nothing should cover that)
   capri.onGaze = (when) => {
     const lines = when === 'end' ? brain.t.uplink : brain.t.gaze;
-    if (!panel.visible && Math.random() < (when === 'end' ? 0.6 : 0.4)) panel.say({ kind: 'info', line: pick(lines), hold: 3800 });
+    if (panel.visible || !initiative.chance(when === 'end' ? 0.6 : 0.4)) return;
+    initiative.offer('ambient', () => panel.say({ kind: 'info', line: pickLine(lines), hold: 3800 }));
   };
   panel.onChar = (kind) => voice.play('blip', { mood: kind });
   panel.onTalk = (talking) => talking && capri.perform('talk');
@@ -237,6 +242,10 @@ async function boot() {
   const guide = new Guide({ capri, panel, voice, host, brain });
   // Talking to her (chat.js): "Talk to her" in her menu, or the button when you click her idle.
   const chat = new Chat({ capri, panel, voice, host, brain });
+  // How much she speaks up on her own (her settings › Initiative): only her optional lines, never
+  // over her chat, her guide, an answer you may be reading, a prompt or a reminder.
+  const initiative = new Initiative({ level: config.initiative, busy: () => occupied({ panel, chat, guide, capri }) });
+  brain.initiative = initiative;
   brain.onTalk = () => chat.start();
   // Getting her chat going with buttons (setup.js): Ollama and a model, a key, or an address
   const setup = new Setup({ guide, panel, host, brain, capri, voice });
@@ -256,6 +265,7 @@ async function boot() {
   chat.bond = bond;
   capri.fondness = bond.stage;
   const jealousy = new Jealousy({ capri, panel, brain, bond, chat, guide });
+  jealousy.initiative = initiative;
   jealousy.enabled = config.jealous !== false;
   chat.jealousy = jealousy;
   brain.onRival = (key) => jealousy.onRivalEvent(key);
@@ -269,6 +279,7 @@ async function boot() {
   // your PC as she feels it (pc.js): the processor, the battery, the network, a USB stick, a game
   const pc = new Pc({ capri, panel, brain, host, voice, chat, guide });
   pc.enabled = config.pcReact !== false;
+  pc.initiative = initiative;
   let wantsOut = config.visible !== false; // not put away in your settings (Ctrl+Alt+C, her menu)
   pc.wantsOut = () => wantsOut;
 
@@ -288,7 +299,7 @@ async function boot() {
   capri.onThrown = ({ how, hard = 0 }) => {
     const t = brain.t.thrown;
     if (how === 'leap') {
-      if (Math.random() < 0.4) panel.say({ kind: 'info', face: 'smug', line: pick(brain.t.screens.hello), hold: 3000 });
+      if (initiative.chance(0.4)) initiative.offer('ambient', () => panel.say({ kind: 'info', face: 'smug', line: pickLine(brain.t.screens.hello), hold: 3000 }));
       return;
     }
     const now = performance.now();
@@ -298,28 +309,28 @@ async function boot() {
     let line, face = 'smug', feel = null;
     if (throws.length >= 3) {
       throws.length = 0;
-      line = pick(t.angry);
+      line = pickLine(t.angry);
       face = 'many';
       feel = 'angry';
       capri.refuseUntil = now + 25000;
       bond.lose(1);
       if (mouse) capri.zap(mouse.x, mouse.y);
-    } else if (how === 'ledge') line = pick(t.ledge);
-    else if (how === 'feet') line = pick(t.feet);
+    } else if (how === 'ledge') line = pickLine(t.ledge);
+    else if (how === 'feet') line = pickLine(t.feet);
     else if (throws.length === 2) {
-      line = pick(t.again);
+      line = pickLine(t.again);
       face = 'aside';
       feel = 'dizzy';
     } else if (hard > 0.75 && Math.random() < 0.5) {
-      line = pick(t.screen);
+      line = pickLine(t.screen);
       face = 'laugh';
       feel = 'thrown';
     } else if (bond.stage >= 3) {
-      line = pick(t.fun);
+      line = pickLine(t.fun);
       face = 'laugh';
       feel = 'fun';
     } else {
-      line = pick(t.ow);
+      line = pickLine(t.ow);
       face = 'wide';
       feel = 'thrown';
     }
@@ -331,7 +342,7 @@ async function boot() {
     jealousy.forgive();
     capri.refuseUntil = 0;
   };
-  capri.onDodge = () => panel.say({ kind: 'info', face: 'smug', line: pick(brain.t.thrown.dodge), hold: 2500 });
+  capri.onDodge = () => panel.say({ kind: 'info', face: 'smug', line: pickLine(brain.t.thrown.dodge), hold: 2500 });
 
   // A new stage with you: her minds come out to look at you, and she says so, the sync bar under it.
   // At a quiet moment, so it isn't missed.
@@ -342,7 +353,7 @@ async function boot() {
   };
   const quiet = () => !capri.busy && !capri.act && !capri.dragging && !capri.stowed && !capri.dormant && !capri.hidden
     && capri.mode !== 'alert' && !chat.open && !guide.running && !panel.visible && ['stand', 'sit'].includes(capri.stance);
-  setInterval(async () => {
+  pause.every(async () => {
     if (!newStage || !quiet()) return;
     const stage = newStage;
     newStage = 0;
@@ -356,8 +367,15 @@ async function boot() {
       line: fmt(up.line, { percent: bond.percent }), quote: up.quote, progress: bond.percent / 100, hold: 9000,
     });
   }, 3000);
+  // Nothing going on and you're at your PC: now and then something of her own, when her initiative
+  // says so (Active; initiative.js says how often). Not right as she comes online.
+  initiative.delay('idle');
+  pause.every(() => {
+    if (!quiet() || brain.busySessions.length || capri.mode === 'sleep' || performance.now() - lastMove > 2 * 60 * 1000) return;
+    initiative.offer('idle', () => panel.say({ kind: 'idle', face: 'calm', line: brain.idleLine(), hold: 4000 }));
+  }, 20000);
   // time spent together: a little sync for every ten minutes you're at your PC with her out
-  setInterval(() => {
+  pause.every(() => {
     if (performance.now() - lastMove < 10 * 60 * 1000 && !capri.stowed) bond.add('time', 1);
   }, 10 * 60 * 1000);
   // back at your PC after a while: once she's attached to you, she's glad to see you
@@ -365,9 +383,9 @@ async function boot() {
     if (bond.stage < 2 || capri.stowed) return;
     capri.wake();
     setTimeout(() => {
-      if (!quiet()) return;
+      if (!quiet() || !initiative.allow('ambient')) return;
       capri.perform('hop');
-      panel.say({ kind: 'idle', face: 'look', line: pick(brain.t.bond.back), hold: 3500 });
+      initiative.offer('ambient', () => panel.say({ kind: 'idle', face: 'look', line: pickLine(brain.t.bond.back), hold: 3500 }));
     }, 700);
   };
 
@@ -381,7 +399,7 @@ async function boot() {
     const missed = r.at < startedAt - 60000;
     const line = missed
       ? fmt(r.text ? t.missed : t.missedBare, { text: r.text, time })
-      : fmt(pick(r.text ? t.now : t.nowBare), { text: r.text });
+      : fmt(pickLine(r.text ? t.now : t.nowBare), { text: r.text });
     let answered = false;
     const onAction = (id) => {
       answered = true;
@@ -395,8 +413,8 @@ async function boot() {
       reminders.remove(r.id);
       bond.add('remind', 2);
       panel.setActions([]);
-      if (chat.open) chat.interject(pick(t.doneLine), [], null);
-      else panel.say({ kind: 'info', face: 'smug', line: pick(t.doneLine), hold: 2500 });
+      if (chat.open) chat.interject(pickLine(t.doneLine), [], null);
+      else panel.say({ kind: 'info', face: 'smug', line: pickLine(t.doneLine), hold: 2500 });
     };
     const actions = [{ id: 'done', label: t.done, primary: true }, { id: 'snooze', label: t.snooze }];
     voice.play('remind');
@@ -419,9 +437,10 @@ async function boot() {
     const shown = panel.say({
       kind: 'remind', face: 'look', line, quote: missed ? '' : fmt(t.asked, { time }), actions, onAction, hold: null,
       // closed without an answer: seen, if it was up long enough to read; else back in a couple of minutes
-      onLeave: () => {
+      // (unseen: kept while your screen was locked and replaced before it went up: panel.js)
+      onLeave: (how) => {
         if (answered) return;
-        if (performance.now() - shownAt > 2500) reminders.remove(r.id);
+        if (!how?.unseen && performance.now() - shownAt > 2500) reminders.remove(r.id);
         else reminders.snooze(r.id, 2 * 60 * 1000);
       },
     });
@@ -515,8 +534,41 @@ async function boot() {
     panel.say({ kind: 'info', line: t.end, hold: 5000 });
   };
 
+  // Your screen locked or the computer asleep (main.js, CAPRI-07): her drawing, her panel's
+  // animations, her CSS animations and her optional timers stop (pause.js), she stays as she is.
+  // Claude Code's events still come in (brain.js keeps count, the panel keeps what matters) and so
+  // do her reminders' times. Back: one set of loops and timers again, her clocks pushed on by the
+  // time paused, what was kept goes up, and no idle line right away (nor a pile of them).
+  pause.on({
+    pause: () => {
+      document.documentElement.dataset.paused = 'true';
+      capri.paused = true;
+      chip.pause();
+      mask.pause();
+      fx.pause();
+      panel.pause();
+      clearTimeout(wakeTimer);
+      wakeTimer = 0;
+    },
+    resume: (gap) => {
+      delete document.documentElement.dataset.paused;
+      capri.shiftClock(gap);
+      capri.paused = false;
+      chip.unpause();
+      mask.unpause();
+      fx.unpause(gap);
+      initiative.delay('idle');
+      panel.unpause(gap);
+      // where the pointer is, she learns again from it (click-through until it comes over her)
+      mouse = null;
+      refreshHit();
+      hoverChip();
+    },
+  });
+  host.onPower?.((state) => pause.set(Boolean(state?.away)));
+
   // what's in here, for --dev scripts (debug route `eval`)
-  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, pc, setup, screens: () => screens };
+  window.dev = { capri, brain, panel, chat, guide, fx, voice, bond, jealousy, reminders, look, pc, setup, initiative, pause, screens: () => screens };
 
   host.onClaudeEvent((evt) => brain.handle(evt));
   host.onWindows((data) => {
@@ -608,6 +660,7 @@ async function boot() {
 
   host.onConfig((cfg) => {
     voice.configure(cfg);
+    initiative.level = cfg.initiative;
     jealousy.enabled = cfg.jealous !== false;
     followOn = cfg.follow !== false;
     look.configure(cfg);
@@ -615,7 +668,8 @@ async function boot() {
     wantsOut = cfg.visible !== false;
     reminders.sync(cfg.reminders); // one may have been cancelled from her menu
     capri.wander = cfg.wander;
-    capri.possessWindows = cfg.possess;
+    capri.possessWindows = cfg.possess && Boolean(cfg.caps?.possess);
+    brain.caps = cfg.caps || {};
     capri.restOn = cfg.rest || 'corner';
     applyMotion(cfg.motion);
     if ((cfg.claude === false && brain.watching) || cfg.assistant !== brain.assistant) {
@@ -673,6 +727,9 @@ async function boot() {
         break;
       case 'goScreen': // a screen picked in her menu: she goes there
         goToScreen(cmd.id);
+        break;
+      case 'update': // a new version of her (updates.js), once: an optional word, never over anything
+        initiative.offer('ambient', () => panel.say({ kind: 'info', face: 'smug', line: pickLine(t.update).replaceAll('{version}', String(cmd.version || '')), hold: 4200 }));
         break;
       case 'screens': // a screen plugged in, unplugged or moved
         refreshScreens();
@@ -833,7 +890,7 @@ async function boot() {
 
   // In the evening, after a real day's work, she brings you her report card once, on her own,
   // at a quiet moment.
-  setInterval(() => {
+  pause.every(() => {
     const day = mission.day;
     const quiet = !brain.busySessions.length && !panel.visible && !guide.running && !capri.busy && !capri.act;
     if (new Date().getHours() < 18 || day.reported || day.missions < 3 || !quiet) return;

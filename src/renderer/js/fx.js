@@ -5,7 +5,7 @@
 // the cut-ins (real frames of her from the show).
 // Drawn on whole frames (24 fps) and only while something is alive.
 
-import { rand, pick, clamp } from './util.js';
+import { rand, pick, clamp, frameIn } from './util.js';
 
 export const COLORS = {
   red: '#ff2152',
@@ -250,6 +250,33 @@ export class FxLayer {
     this.items = [];
     this.running = false;
     this.last = 0;
+    this.frame = this.frame.bind(this);
+    this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.paused = false;
+  }
+
+  // Screen locked or asleep (pause.js): no frames meanwhile, the effects stay as they are. Back
+  // after `gap` ms: each one's clock (born, its *At moments, as they were when it paused) is pushed
+  // on by it, so they go on from where they were instead of all ending at once, and the loop starts
+  // again (one loop).
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.nextFrame?.();
+    this.nextFrame = null;
+    this.frozen = this.items.flatMap((it) => Object.keys(it)
+      .filter((k) => (k === 'born' || k.endsWith('At')) && Number.isFinite(it[k]) && it[k] > 0)
+      .map((k) => [it, k, it[k]]));
+  }
+
+  // (one added or changed while paused is on the real clock already: left as it is)
+  unpause(gap = 0) {
+    if (!this.paused) return;
+    this.paused = false;
+    for (const [it, k, v] of this.frozen || []) if (gap > 0 && it[k] === v) it[k] = v + gap;
+    this.frozen = null;
+    this.last = 0; // the first frame back steps by nothing
+    if (this.running && !this.nextFrame) this.nextFrame = frameIn(0, this.frame);
   }
 
   resize(width, height) {
@@ -280,9 +307,11 @@ export class FxLayer {
   add(item) {
     item.born = performance.now();
     this.items.push(item);
-    if (!this.running) {
+    if (!this.running || item.smooth) {
+      // something that moves smoothly (her intro) wants the very next refresh, not the next whole frame
       this.running = true;
-      requestAnimationFrame((t) => this.frame(t));
+      this.nextFrame?.();
+      this.nextFrame = this.paused ? null : frameIn(0, this.frame); // paused: unpause() starts it
     }
     return item;
   }
@@ -814,9 +843,13 @@ export class FxLayer {
 
   // Whole frames at 24 fps, or every screen refresh while something that moves smoothly is on
   // (her intro: its camera moves follow the clock, its drawings still change on whole frames).
+  // Between whole frames it waits with a timer, not a request for every refresh (see frameIn).
   frame(now) {
-    if (now - this.last < FRAME_MS - 2 && !this.items.some((it) => it.smooth)) {
-      requestAnimationFrame((t) => this.frame(t));
+    this.nextFrame = null;
+    if (this.paused) return;
+    const smooth = this.items.some((it) => it.smooth);
+    if (now - this.last < FRAME_MS - 2 && !smooth) {
+      this.nextFrame = frameIn(this.last + FRAME_MS - performance.now(), this.frame);
       return;
     }
     const dt = Math.min(0.08, (now - (this.last || now)) / 1000);
@@ -832,7 +865,7 @@ export class FxLayer {
     for (const it of this.items) this.draw(it, (now - it.born) / it.life, dt, now);
 
     if (this.items.length) {
-      requestAnimationFrame((t) => this.frame(t));
+      this.nextFrame = frameIn(this.items.some((it) => it.smooth) ? 0 : now + FRAME_MS - performance.now(), this.frame);
     } else {
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.running = false;

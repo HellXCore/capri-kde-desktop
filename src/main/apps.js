@@ -60,8 +60,10 @@ async function find(wanted) {
 }
 
 // Closes it like its close button would; `force` ends it outright (unsaved work is lost).
-// Resolves with what's left: { running } (true when it stayed open, or hid in the tray).
+// Resolves with what's left: { running } (true when it stayed open, or hid in the tray), and
+// { unsupported } where she can't close apps.
 async function close(name, { force = false } = {}) {
+  if (process.platform !== 'win32') return { running: false, unsupported: true }; // never "closed" when nothing was
   const app = (await list()).find((a) => a.process === name);
   if (!app) return { running: false };
   const ids = app.ids.join(',');

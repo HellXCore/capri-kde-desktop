@@ -30,7 +30,7 @@ export const reducedMotion = {
 // "{project} a fini" + {project: 'x'} -> "x a fini"
 export const fmt = (str, vars = {}) => str.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''));
 
-export function duration(ms, lang = 'fr') {
+export function duration(ms, lang = 'en') {
   const ru = lang === 'ru';
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return ru ? `${s} с` : `${s} s`;
@@ -47,6 +47,27 @@ export const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+// A screen refresh about `ms` from now (at most one refresh early: the loops check their own time
+// and wait for the next one if it's too soon), calls fn(time) on it. Loops drawn on twos (or slower)
+// wait with a timer until just short of it instead of waking up for every refresh before it (60 or
+// more a second, each one a frame for the renderer and the GPU process): then requestAnimationFrame,
+// so the drawing still lands on a refresh. Returns a function that cancels it.
+const REFRESH_MS = 1000 / 60;
+export function frameIn(ms, fn) {
+  let raf = 0;
+  let timer = 0;
+  const go = () => {
+    timer = 0;
+    raf = requestAnimationFrame(fn);
+  };
+  if (ms > REFRESH_MS) timer = setTimeout(go, ms - REFRESH_MS);
+  else go();
+  return () => {
+    clearTimeout(timer);
+    cancelAnimationFrame(raf);
+  };
+}
 
 // Tweens a set of numeric props on `target`. Values are read by the stepped render loop,
 // so the result lands on whole drawing frames like cel animation.

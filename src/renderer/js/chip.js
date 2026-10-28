@@ -9,7 +9,7 @@
 // open, blinking, while Claude is waiting on you. Click it and she comes back out (app.js).
 
 import { COLORS, drawMask } from './fx.js';
-import { rand, reducedMotion } from './util.js';
+import { rand, reducedMotion, frameIn } from './util.js';
 
 const STEP = 1000 / 12;
 
@@ -27,6 +27,8 @@ class Small {
     this.x = 0;
     this.y = 0;
     this.loop = this.loop.bind(this);
+    this.nextFrame = null; // cancels the frame the loop is waiting for
+    this.paused = false;
   }
 
   moveTo(x, y) {
@@ -51,24 +53,44 @@ class Small {
     this.visible = true;
     this.canvas.hidden = false;
     this.shownAt = performance.now();
-    requestAnimationFrame(this.loop);
+    this.nextFrame?.();
+    this.nextFrame = this.paused ? null : frameIn(0, this.loop);
+  }
+
+  // Screen locked or asleep (pause.js): it stays where it is, undrawn, until you're back; then one
+  // loop again, if it's on screen.
+  pause() {
+    this.paused = true;
+    this.nextFrame?.();
+    this.nextFrame = null;
+  }
+
+  unpause() {
+    if (!this.paused) return;
+    this.paused = false;
+    if (this.visible && !this.nextFrame) this.nextFrame = frameIn(0, this.loop);
   }
 
   hide() {
     this.visible = false;
     this.canvas.hidden = true;
     this.pointer = null;
+    this.nextFrame?.();
+    this.nextFrame = null;
   }
 
+  // on twos: woken for the refresh its next drawing is due on, not for every one (see frameIn)
   loop(now) {
-    if (!this.visible) return;
-    requestAnimationFrame(this.loop);
-    if (now - this.last < STEP - 1) return;
-    this.last = now;
-    const dpr = window.devicePixelRatio || 1;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.clearRect(0, 0, this.w, this.h);
-    this.draw(now, Math.floor(now / STEP));
+    this.nextFrame = null;
+    if (!this.visible || this.paused) return;
+    if (now - this.last >= STEP - 1) {
+      this.last = now;
+      const dpr = window.devicePixelRatio || 1;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.ctx.clearRect(0, 0, this.w, this.h);
+      this.draw(now, Math.floor(now / STEP));
+    }
+    this.nextFrame = frameIn(this.last + STEP - performance.now(), this.loop);
   }
 
   // it lands as a white silhouette, one drawing, like her impact frames

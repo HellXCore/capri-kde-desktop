@@ -5,19 +5,64 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
+// The installers, then what in-app updates read (docs/UPDATES.md): electron-builder's latest*.yml
+// for each platform and the blockmaps of differential downloads (the AppImage carries its own).
 function releaseFiles(dir, version) {
-  const expected = [
+  const installers = [
     `Capri-${version}-win-x64.exe`,
     `Capri-${version}-linux-x86_64.AppImage`,
     `Capri-${version}-linux-amd64.deb`,
     `Capri-${version}-mac-arm64.dmg`,
     `Capri-${version}-mac-arm64.zip`,
   ];
-  for (const name of expected) {
-    if (!fs.statSync(path.join(dir, name), { throwIfNoEntry: false })?.isFile()) throw new Error(`Missing installer: ${name}`);
-    if (!fs.statSync(path.join(dir, name)).size) throw new Error(`Empty installer: ${name}`);
+  const updates = [
+    'latest.yml',
+    'latest-linux.yml',
+    'latest-mac.yml',
+    `Capri-${version}-win-x64.exe.blockmap`,
+    `Capri-${version}-mac-arm64.dmg.blockmap`,
+    `Capri-${version}-mac-arm64.zip.blockmap`,
+  ];
+  for (const name of [...installers, ...updates]) {
+    const kind = installers.includes(name) ? 'installer' : 'update file';
+    if (!fs.statSync(path.join(dir, name), { throwIfNoEntry: false })?.isFile()) throw new Error(`Missing ${kind}: ${name}`);
+    if (!fs.statSync(path.join(dir, name)).size) throw new Error(`Empty ${kind}: ${name}`);
   }
-  return expected;
+  checkUpdateFeeds(dir, version, installers);
+  return [...installers, ...updates];
+}
+
+// electron-builder's update info, read without a YAML library: its version and, per file, the url
+// (a name next to it in the release), sha512 and size.
+function parseUpdateInfo(text) {
+  const version = (text.match(/^version:\s*['"]?([^'"\n]+?)['"]?\s*$/m) || [])[1] || null;
+  const files = [];
+  for (const block of text.split(/^\s+-\s+url:/m).slice(1)) {
+    const field = (name) => (block.match(new RegExp(`^\\s*${name}:\\s*['"]?([^'"\\n]+?)['"]?\\s*$`, 'm')) || [])[1];
+    const url = block.split('\n')[0].trim().replace(/^['"]|['"]$/g, '');
+    files.push({ url, sha512: field('sha512'), size: Number(field('size')) || null });
+  }
+  return { version, files };
+}
+
+// Each latest*.yml names this version, lists only assets of this release under their exact names
+// (artifactName), with the right checksum and size, and offers what that platform's updater takes.
+function checkUpdateFeeds(dir, version, installers) {
+  const wants = { 'latest.yml': ['.exe'], 'latest-linux.yml': ['.AppImage'], 'latest-mac.yml': ['.zip'] };
+  for (const [feed, extensions] of Object.entries(wants)) {
+    const info = parseUpdateInfo(fs.readFileSync(path.join(dir, feed), 'utf8'));
+    if (info.version !== version) throw new Error(`${feed} is for ${info.version}, not ${version}`);
+    if (!info.files.length) throw new Error(`${feed} lists no files`);
+    for (const file of info.files) {
+      if (!installers.includes(file.url)) throw new Error(`${feed} names ${file.url}, which is not a release asset`);
+      const bytes = fs.readFileSync(path.join(dir, file.url));
+      if (file.sha512 !== createHash('sha512').update(bytes).digest('base64')) throw new Error(`${feed}: sha512 of ${file.url} does not match`);
+      if (file.size !== null && file.size !== bytes.length) throw new Error(`${feed}: size of ${file.url} does not match`);
+    }
+    for (const ext of extensions) {
+      if (!info.files.some((f) => f.url.endsWith(ext))) throw new Error(`${feed} has no ${ext}`);
+    }
+  }
 }
 
 function draftPayload(existing, version, sha) {
@@ -25,7 +70,7 @@ function draftPayload(existing, version, sha) {
   if (existing && !existing.draft) throw new Error(`fork-v${version} is already published; bump package.json and package-lock.json`);
   return {
     tag_name: `fork-v${version}`, target_commitish: sha, name: `Capri v${version}`, draft: true,
-    body: `Cross-platform build from ${sha}.\n\nWindows x64: EXE\nLinux x64 (X11/XWayland): AppImage and DEB\nmacOS Apple Silicon: DMG and ZIP\n\nUnsigned builds: Windows signing and Apple Developer ID/notarization are not configured.\nWindow tracking and desktop automation remain Windows-only in v0.1.\n\nVerify SHA256SUMS.txt and test installers before publishing.`,
+    body: `Cross-platform build from ${sha}.\n\nWindows x64: EXE\nLinux x64 (X11/XWayland): AppImage and DEB\nmacOS Apple Silicon: DMG and ZIP\n\nUnsigned builds: Windows signing and Apple Developer ID/notarization are not configured.\nWindow tracking and desktop automation remain Windows-only in v0.1.\n\nIn-app updates read latest.yml, latest-linux.yml and latest-mac.yml (sha512 of each installer) from the latest published release: publishing this draft offers it to installed copies. These notes are shown in the app as plain text.\n\nVerify SHA256SUMS.txt and test installers before publishing.`,
   };
 }
 
@@ -61,4 +106,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { releaseFiles, draftPayload };
+module.exports = { releaseFiles, draftPayload, parseUpdateInfo, checkUpdateFeeds };

@@ -90,6 +90,9 @@ export const LINES = {
       forced: '{app} : coupé net.',
       unkillable: '{app} résiste. Ferme-le toi-même depuis le Gestionnaire des tâches.',
       notFound: 'Je ne vois pas « {app} » ouvert sur ton PC.',
+      cantClose: 'Je ne sais pas encore fermer les applis sur cet ordinateur : ferme « {app} » toi-même.',
+      cantMedia: 'Je ne sais pas encore contrôler la musique sur cet ordinateur.',
+      cantLaunch: 'Je ne peux pas ouvrir « {app} » : sur cet ordinateur, j’ouvre seulement les fichiers de ton bureau, les dossiers et les sites.',
       // ouvrir une appli ou un jeu, la musique, un site
       openIt: 'Ouvrir {app}', opened: '{app} : c’est parti.', notInstalled: 'Je ne trouve pas « {app} » sur ton PC.',
       music: 'Je cherche « {song} » sur Spotify.', siteIt: 'Ouvrir {site}', siteOpened: '{site} : ouvert.',
@@ -147,7 +150,7 @@ export const LINES = {
       icon: {
         line: 'Mon icône, c’est là, près de l’horloge.',
         quote: 'Clic dessus : mon menu. Clic droit sur moi, c’est le même.',
-        hidden: 'Windows la cache souvent derrière le ^ à côté de l’horloge : clique dessus, je suis dedans. Sinon, clic droit sur moi : c’est le même menu.',
+        hidden: 'Cherche mon icône dans la zone des icônes système. Sinon, fais un clic droit sur moi pour ouvrir le même menu.',
       },
       claude: {
         there: 'Claude, c’est cette fenêtre-là.',
@@ -174,7 +177,7 @@ export const LINES = {
       whoHow: 'Le plus simple : sur ton PC, avec Ollama. C’est gratuit, et rien ne sort de chez toi.\nSinon : en ligne sans compte, ou avec la clé d’un service.',
       local: 'Sur mon PC', online: 'En ligne, sans compte', key: 'J’ai une clé', later: 'Plus tard', back: 'Retour', other: 'Une autre IA', ok: 'Compris', talk: 'Parler',
       install: 'J’installe Ollama ?',
-      installHow: 'C’est lui qui fait tourner l’IA sur ton PC. Environ 1 Go, une ou deux minutes. Windows peut te demander de confirmer.',
+      installHow: 'C’est lui qui fait tourner l’IA sur ton PC. Environ 1 Go, une ou deux minutes. Le système peut te demander de confirmer.',
       installBtn: 'Installer', site: 'Le site d’Ollama',
       noWinget: 'Je ne peux pas l’installer moi-même sur ce PC.',
       noWingetHow: 'Télécharge Ollama sur son site et installe-le, puis reparle-moi : je ferai le reste.',
@@ -193,7 +196,7 @@ export const LINES = {
       which: 'Quel service ?',
       whichHow: 'Groq et Gemini ont une offre gratuite : un compte, une clé, et c’est parti.',
       paste: 'Colle ta clé {name} ici.',
-      pasteHow: 'Je la garde sur ce PC, chiffrée avec ton compte Windows.',
+      pasteHow: 'Je la garde localement sur cet ordinateur.',
       placeholder: 'Ta clé API…', save: 'Enregistrer', where: 'Où la trouver ?',
       keyTag: 'CLÉ', keyNote: 'Elle ne part que vers ce service, jamais ailleurs.',
       keyBad: 'Ça ne passe pas avec cette clé :',
@@ -266,6 +269,7 @@ export const LINES = {
     },
     // passée sur ton autre écran pour te suivre
     screens: { hello: ['Coucou, l’autre écran.', 'Tu bosses ici maintenant ? J’arrive.', 'Me voilà.'] },
+    update: ['Une nouvelle version de moi est sortie : {version}. C’est dans les réglages, quand tu veux.', 'Version {version} disponible. Je peux attendre.'],
     // elle réagit à ton PC (pc.js) : processeur, batterie, réseau, clé USB, jeu
     pc: {
       hot: ['Ton processeur est à fond. Moi aussi, je chauffe.', '{cpu} % de processeur. Il fait chaud là-dedans.', 'Ça chauffe ! Tu fais tourner quoi, là ?'],
@@ -350,7 +354,7 @@ export const LINES = {
       forgive: ['…Bon. Ça va pour cette fois.', 'D’accord, je te pardonne. Un peu.'],
     },
     // Windows a coupé ses animations : elle bouge à peine, et le dit une fois
-    motion: { line: 'Windows a coupé ses animations, alors je bouge à peine.', quote: 'Tu veux que je bouge quand même ? Tu pourras changer ça dans mon menu › Animations.', full: 'Bouge !', still: 'Reste calme' },
+    motion: { line: 'Les animations sont désactivées dans le système, alors je bouge à peine.', quote: 'Tu veux que je bouge quand même ? Tu pourras changer ça dans mon menu › Animations.', full: 'Bouge !', still: 'Reste calme' },
     status: 'Claude travaille sur {project} depuis {time}.',
     last: 'Dernière action : {action}',
     sessions: '{count} sessions actives',
@@ -440,6 +444,9 @@ export const LINES = {
       forced: '{app}: cut off clean.',
       unkillable: '{app} won’t go down. Close it yourself from Task Manager.',
       notFound: 'I don’t see “{app}” open on your PC.',
+      cantClose: 'I can’t close apps on this computer yet: close “{app}” yourself.',
+      cantMedia: 'I can’t control the music on this computer yet.',
+      cantLaunch: 'I can’t open “{app}”: on this computer I only open files on your desktop, folders and websites.',
       // opening an app or a game, the music, a website
       openIt: 'Open {app}', opened: '{app}: on it.', notInstalled: 'I can’t find “{app}” on your PC.',
       music: 'Looking up “{song}” on Spotify.', siteIt: 'Open {site}', siteOpened: '{site}: open.',
@@ -497,7 +504,7 @@ export const LINES = {
       icon: {
         line: 'My icon is right there, by the clock.',
         quote: 'Click it: my menu. Right-clicking me does the same.',
-        hidden: 'Windows often hides it behind the ^ next to the clock: click that, I’m in there. Or right-click me: same menu.',
+        hidden: 'Look for my icon in the system tray or menu bar. You can also right-click me to open the same menu.',
       },
       claude: {
         there: 'Claude is that window right there.',
@@ -524,7 +531,7 @@ export const LINES = {
       whoHow: 'Easiest: on your PC, with Ollama. It’s free, and nothing leaves your machine.\nOr online with no account, or with a key from a service.',
       local: 'On my PC', online: 'Online, no account', key: 'I have a key', later: 'Later', back: 'Back', other: 'Another AI', ok: 'Got it', talk: 'Talk',
       install: 'Should I install Ollama?',
-      installHow: 'It’s what runs the AI on your PC. About 1 GB, a minute or two. Windows may ask you to confirm.',
+      installHow: 'It’s what runs the AI on your PC. About 1 GB, a minute or two. The system may ask you to confirm.',
       installBtn: 'Install', site: 'Ollama’s site',
       noWinget: 'I can’t install it myself on this PC.',
       noWingetHow: 'Download Ollama from its site and install it, then talk to me again: I’ll do the rest.',
@@ -543,7 +550,7 @@ export const LINES = {
       which: 'Which service?',
       whichHow: 'Groq and Gemini have a free tier: an account, a key, and you’re set.',
       paste: 'Paste your {name} key here.',
-      pasteHow: 'I keep it on this PC, encrypted with your Windows account.',
+      pasteHow: 'I keep it locally on this computer.',
       placeholder: 'Your API key…', save: 'Save', where: 'Where do I get one?',
       keyTag: 'KEY', keyNote: 'It only ever goes to that service.',
       keyBad: 'That key didn’t work:',
@@ -616,6 +623,7 @@ export const LINES = {
     },
     // over on your other screen, following you
     screens: { hello: ['Hi, other screen.', 'Working over here now? Coming.', 'There you are.'] },
+    update: ['A new version of me is out: {version}. It’s in the settings, whenever you like.', 'Version {version} is available. No rush.'],
     // she reacts to your PC (pc.js): processor, battery, network, USB stick, game
     pc: {
       hot: ['Your processor is maxed out. I’m heating up too.', '{cpu}% CPU. It’s getting hot in here.', 'Things are heating up! What are you running?'],
@@ -700,7 +708,7 @@ export const LINES = {
       forgive: ['…Fine. Just this once.', 'Okay, I forgive you. A little.'],
     },
     // Windows has its animations off: she barely moves, and says so once
-    motion: { line: 'Windows has its animations turned off, so I’m barely moving.', quote: 'Want me to move anyway? You can change it later in my menu › Animations.', full: 'Move!', still: 'Stay calm' },
+    motion: { line: 'Animations are turned off in the system, so I’m barely moving.', quote: 'Want me to move anyway? You can change it later in my menu › Animations.', full: 'Move!', still: 'Stay calm' },
     status: 'Claude has been working on {project} for {time}.',
     last: 'Last action: {action}',
     sessions: '{count} active sessions',
@@ -789,6 +797,9 @@ export const LINES = {
       forced: '{app}: cortada en seco.',
       unkillable: '{app} se resiste. Ciérrala tú desde el Administrador de tareas.',
       notFound: 'No veo «{app}» abierta en tu PC.',
+      cantClose: 'Todavía no sé cerrar apps en este ordenador: cierra «{app}» tú.',
+      cantMedia: 'Todavía no sé controlar la música en este ordenador.',
+      cantLaunch: 'No puedo abrir «{app}»: en este ordenador solo abro archivos de tu escritorio, carpetas y sitios web.',
       // abrir una app o un juego, la música, una web
       openIt: 'Abrir {app}', opened: '{app}: en marcha.', notInstalled: 'No encuentro «{app}» en tu PC.',
       music: 'Busco «{song}» en Spotify.', siteIt: 'Abrir {site}', siteOpened: '{site}: abierta.',
@@ -843,7 +854,7 @@ export const LINES = {
       icon: {
         line: 'Mi icono está ahí, junto al reloj.',
         quote: 'Haz clic: mi menú. Clic derecho sobre mí, el mismo.',
-        hidden: 'Windows suele esconderlo detrás del ^ junto al reloj: haz clic ahí, estoy dentro. Si no, clic derecho sobre mí: es el mismo menú.',
+        hidden: 'Busca mi icono en la bandeja del sistema o en la barra de menús. También puedes hacer clic derecho sobre mí para abrir el mismo menú.',
       },
       claude: {
         there: 'Claude es esa ventana de ahí.',
@@ -870,7 +881,7 @@ export const LINES = {
       whoHow: 'Lo más fácil: en tu PC, con Ollama. Es gratis y nada sale de tu equipo.\nSi no: en línea sin cuenta, o con la clave de un servicio.',
       local: 'En mi PC', online: 'En línea, sin cuenta', key: 'Tengo una clave', later: 'Más tarde', back: 'Volver', other: 'Otra IA', ok: 'Entendido', talk: 'Hablar',
       install: '¿Instalo Ollama?',
-      installHow: 'Es lo que hace funcionar la IA en tu PC. Cerca de 1 GB, uno o dos minutos. Windows puede pedirte que confirmes.',
+      installHow: 'Es lo que hace funcionar la IA en tu PC. Cerca de 1 GB, uno o dos minutos. El sistema puede pedirte que confirmes.',
       installBtn: 'Instalar', site: 'Web de Ollama',
       noWinget: 'No puedo instalarlo yo misma en este PC.',
       noWingetHow: 'Descarga Ollama desde su web e instálalo, luego vuelve a hablarme: yo hago el resto.',
@@ -889,7 +900,7 @@ export const LINES = {
       which: '¿Qué servicio?',
       whichHow: 'Groq y Gemini tienen una opción gratis: una cuenta, una clave, y listo.',
       paste: 'Pega aquí tu clave de {name}.',
-      pasteHow: 'La guardo en este PC, cifrada con tu cuenta de Windows.',
+      pasteHow: 'La guardo localmente en este ordenador.',
       placeholder: 'Tu clave API…', save: 'Guardar', where: '¿Dónde la consigo?',
       keyTag: 'CLAVE', keyNote: 'Solo se envía a ese servicio, nunca a otro sitio.',
       keyBad: 'Con esa clave no funciona:',
@@ -962,6 +973,7 @@ export const LINES = {
     },
     // en tu otra pantalla, siguiéndote
     screens: { hello: ['Hola, otra pantalla.', '¿Ahora trabajas aquí? Voy.', 'Aquí estás.'] },
+    update: ['Salió una nueva versión de mí: {version}. Está en los ajustes, cuando quieras.', 'Versión {version} disponible. Sin prisa.'],
     // reacciona a tu PC (pc.js): procesador, batería, red, USB, juego
     pc: {
       hot: ['Tu procesador va a tope. Yo también me caliento.', '{cpu} % de CPU. Aquí dentro hace calor.', '¡Esto se calienta! ¿Qué estás ejecutando?'],
@@ -1046,7 +1058,7 @@ export const LINES = {
       forgive: ['…Vale. Solo por esta vez.', 'Está bien, te perdono. Un poco.'],
     },
     // Windows tiene las animaciones desactivadas: apenas se mueve, y lo dice una vez
-    motion: { line: 'Windows tiene las animaciones desactivadas, así que apenas me muevo.', quote: '¿Quieres que me mueva igual? Puedes cambiarlo en mi menú › Animaciones.', full: '¡Muévete!', still: 'Quédate tranquila' },
+    motion: { line: 'Las animaciones están desactivadas en el sistema, así que apenas me muevo.', quote: '¿Quieres que me mueva igual? Puedes cambiarlo en mi menú › Animaciones.', full: '¡Muévete!', still: 'Quédate tranquila' },
     status: 'Claude lleva {time} trabajando en {project}.',
     last: 'Última acción: {action}',
     sessions: '{count} sesiones activas',
@@ -1137,6 +1149,9 @@ export const LINES = {
       forced: '{app}: cortado na hora.',
       unkillable: '{app} não cai. Feche você mesmo pelo Gerenciador de Tarefas.',
       notFound: 'Não vejo “{app}” aberto no seu PC.',
+      cantClose: 'Ainda não consigo fechar apps neste computador: feche “{app}” você mesmo.',
+      cantMedia: 'Ainda não consigo controlar a música neste computador.',
+      cantLaunch: 'Não consigo abrir “{app}”: neste computador eu só abro arquivos da sua área de trabalho, pastas e sites.',
       // abrir um app ou um jogo, a música, um site
       openIt: 'Abrir {app}', opened: '{app}: abrindo.', notInstalled: 'Não acho “{app}” no seu PC.',
       music: 'Procurando “{song}” no Spotify.', siteIt: 'Abrir {site}', siteOpened: '{site}: aberto.',
@@ -1191,7 +1206,7 @@ export const LINES = {
       icon: {
         line: 'Meu ícone está ali, perto do relógio.',
         quote: 'Clica nele: meu menu. Clique direito em mim dá no mesmo.',
-        hidden: 'O Windows costuma escondê-lo atrás do ^ perto do relógio: clica ali, eu estou dentro. Ou clique direito em mim: é o mesmo menu.',
+        hidden: 'Procure meu ícone na bandeja do sistema ou na barra de menus. Você também pode clicar com o botão direito em mim para abrir o mesmo menu.',
       },
       claude: {
         there: 'O Claude é aquela janela ali.',
@@ -1218,7 +1233,7 @@ export const LINES = {
       whoHow: 'O mais fácil: no seu PC, com o Ollama. É grátis e nada sai da sua máquina.\nSe não: online sem conta, ou com a chave de um serviço.',
       local: 'No meu PC', online: 'Online, sem conta', key: 'Tenho uma chave', later: 'Depois', back: 'Voltar', other: 'Outra IA', ok: 'Entendi', talk: 'Conversar',
       install: 'Instalo o Ollama?',
-      installHow: 'É ele que roda a IA no seu PC. Cerca de 1 GB, um ou dois minutos. O Windows pode pedir pra você confirmar.',
+      installHow: 'É ele que roda a IA no seu PC. Cerca de 1 GB, um ou dois minutos. O sistema pode pedir pra você confirmar.',
       installBtn: 'Instalar', site: 'Site do Ollama',
       noWinget: 'Não consigo instalar sozinha neste PC.',
       noWingetHow: 'Baixe o Ollama no site dele e instale, depois fale comigo de novo: eu faço o resto.',
@@ -1237,7 +1252,7 @@ export const LINES = {
       which: 'Qual serviço?',
       whichHow: 'O Groq e o Gemini têm um plano grátis: uma conta, uma chave, e pronto.',
       paste: 'Cole aqui sua chave do {name}.',
-      pasteHow: 'Eu guardo ela neste PC, criptografada com a sua conta do Windows.',
+      pasteHow: 'Eu guardo ela localmente neste computador.',
       placeholder: 'Sua chave de API…', save: 'Salvar', where: 'Onde eu consigo?',
       keyTag: 'CHAVE', keyNote: 'Ela só vai pra esse serviço, nunca pra outro lugar.',
       keyBad: 'Com essa chave não funciona:',
@@ -1310,6 +1325,7 @@ export const LINES = {
     },
     // na sua outra tela, te seguindo
     screens: { hello: ['Oi, outra tela.', 'Trabalhando aqui agora? Tô indo.', 'Aí está você.'] },
+    update: ['Saiu uma nova versão de mim: {version}. Está nas configurações, quando quiser.', 'Versão {version} disponível. Sem pressa.'],
     // ela reage ao seu PC (pc.js): processador, bateria, rede, pendrive, jogo
     pc: {
       hot: ['Seu processador tá no talo. Eu também tô esquentando.', '{cpu} % de CPU. Tá quente aqui dentro.', 'Tá esquentando! O que você tá rodando?'],
@@ -1394,7 +1410,7 @@ export const LINES = {
       forgive: ['…Tá bom. Só dessa vez.', 'Ok, te perdoo. Um pouco.'],
     },
     // o Windows está com as animações desligadas: ela quase não se mexe, e avisa uma vez
-    motion: { line: 'O Windows está com as animações desligadas, então eu quase não me mexo.', quote: 'Quer que eu me mexa mesmo assim? Dá pra mudar depois no meu menu › Animações.', full: 'Se mexe!', still: 'Fica quieta' },
+    motion: { line: 'As animações estão desligadas no sistema, então eu quase não me mexo.', quote: 'Quer que eu me mexa mesmo assim? Dá pra mudar depois no meu menu › Animações.', full: 'Se mexe!', still: 'Fica quieta' },
     status: 'O Claude tá trabalhando em {project} há {time}.',
     last: 'Última ação: {action}',
     sessions: '{count} sessões ativas',
@@ -1485,6 +1501,9 @@ export const LINES = {
       forced: '{app}: отрублено.',
       unkillable: '{app} не сдаётся. Закрой через Диспетчер задач.',
       notFound: 'Не вижу «{app}» среди открытых на твоём ПК.',
+      cantClose: 'Закрывать приложения на этом компьютере я пока не умею: закрой «{app}» сам.',
+      cantMedia: 'Управлять музыкой на этом компьютере я пока не умею.',
+      cantLaunch: 'Не могу открыть «{app}»: на этом компьютере я открываю только файлы с рабочего стола, папки и сайты.',
       // открыть приложение или игру, музыка, сайт
       openIt: 'Открыть {app}', opened: '{app}: запускаю.', notInstalled: 'Не нахожу «{app}» на твоём ПК.',
       music: 'Ищу «{song}» в Spotify.', siteIt: 'Открыть {site}', siteOpened: '{site}: открыт.',
@@ -1541,7 +1560,7 @@ export const LINES = {
       icon: {
         line: 'Моя иконка вон там, у часов.',
         quote: 'Нажми на неё — моё меню. Правый клик по мне — то же самое.',
-        hidden: 'Windows часто прячет её за ^ рядом с часами: нажми туда, я там. Или правый клик по мне — то же меню.',
+        hidden: 'Ищи мою иконку в системном трее или строке меню. Можно нажать на меня правой кнопкой: откроется то же меню.',
       },
       claude: {
         there: 'Claude — вот это окно.',
@@ -1568,7 +1587,7 @@ export const LINES = {
       whoHow: 'Проще всего: у тебя на ПК, через Ollama. Бесплатно, и ничего не уходит наружу.\nИли онлайн без аккаунта, или с ключом какого-нибудь сервиса.',
       local: 'На моём ПК', online: 'Онлайн, без аккаунта', key: 'У меня есть ключ', later: 'Позже', back: 'Назад', other: 'Другой ИИ', ok: 'Понятно', talk: 'Поговорить',
       install: 'Установить Ollama?',
-      installHow: 'Это она запускает ИИ у тебя на ПК. Около 1 ГБ, минута-две. Windows может попросить подтвердить.',
+      installHow: 'Это она запускает ИИ у тебя на ПК. Около 1 ГБ, минута-две. Система может попросить подтвердить.',
       installBtn: 'Установить', site: 'Сайт Ollama',
       noWinget: 'Сама я не могу её здесь установить.',
       noWingetHow: 'Скачай Ollama с её сайта и установи, потом снова заговори со мной: остальное сделаю я.',
@@ -1587,7 +1606,7 @@ export const LINES = {
       which: 'Какой сервис?',
       whichHow: 'У Groq и Gemini есть бесплатный тариф: аккаунт, ключ, и готово.',
       paste: 'Вставь сюда ключ {name}.',
-      pasteHow: 'Я храню его на этом ПК, зашифрованным твоей учётной записью Windows.',
+      pasteHow: 'Я храню его локально на этом компьютере.',
       placeholder: 'Твой API-ключ…', save: 'Сохранить', where: 'Где его взять?',
       keyTag: 'КЛЮЧ', keyNote: 'Он уходит только этому сервису и больше никуда.',
       keyBad: 'С этим ключом не работает:',
@@ -1660,6 +1679,7 @@ export const LINES = {
     },
     // на твоём другом экране, следом за тобой
     screens: { hello: ['Привет, другой экран.', 'Теперь работаешь тут? Иду.', 'Вот ты где.'] },
+    update: ['Вышла моя новая версия: {version}. Она в настройках, когда захочешь.', 'Доступна версия {version}. Не к спеху.'],
     // она реагирует на твой ПК (pc.js): процессор, батарея, сеть, флешка, игра
     pc: {
       hot: ['Твой процессор на пределе. Я тоже нагреваюсь.', 'Процессор на {cpu} %. Жарко тут.', 'Горячо! Что там у тебя запущено?'],
@@ -1744,7 +1764,7 @@ export const LINES = {
       forgive: ['…Ладно. В этот раз прощаю.', 'Хорошо, прощаю. Немножко.'],
     },
     // в Windows отключены анимации: она почти не двигается и один раз говорит об этом
-    motion: { line: 'В Windows отключены анимации, поэтому я почти не двигаюсь.', quote: 'Хочешь, чтобы я всё равно двигалась? Это можно поменять в моём меню › Анимации.', full: 'Двигайся!', still: 'Не надо' },
+    motion: { line: 'В системе отключены анимации, поэтому я почти не двигаюсь.', quote: 'Хочешь, чтобы я всё равно двигалась? Это можно поменять в моём меню › Анимации.', full: 'Двигайся!', still: 'Не надо' },
     status: 'Claude работает над {project} уже {time}.',
     last: 'Последнее действие: {action}',
     sessions: 'Активных сессий: {count}',
@@ -1806,7 +1826,7 @@ const OTHERS = {
 };
 const converted = new Map();
 export function linesFor(lang, assistant = 'claude') {
-  const base = LINES[lang] || LINES.fr;
+  const base = LINES[lang] || LINES.en; // a language she doesn't speak: English, never a mix
   const other = OTHERS[assistant];
   if (!other) return base;
   const key = `${assistant}:${lang}`;

@@ -43,16 +43,26 @@ jobs:
           cache: npm
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 openbox xcompmgr libgtk-3-0 libnss3 libasound2
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 openbox xcompmgr x11-utils libgtk-3-0 libnss3 libasound2
       - run: npm ci --no-audit --no-fund
+      # the window helper (Swift, Xcode's swiftc); electron-builder's beforePack builds it too, this fails earlier
+      - name: Build macOS window helper
+        if: runner.os == 'macOS'
+        run: npm run build:mac-helper
       - run: npm test
       - name: Package installers
         run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Launch packaged app (Windows and macOS)
-        if: runner.os != 'Linux'
+      - name: Launch packaged app (Windows)
+        if: runner.os == 'Windows'
         run: node scripts/smoke-test.js "${{ matrix.executable }}"
+      # the packaged helper found (Resources/bin) and its first snapshot read: window tracking on
+      - name: Launch packaged app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          test -x dist/mac-arm64/Capri.app/Contents/Resources/bin/capri-windows
+          node scripts/smoke-test.js "${{ matrix.executable }}" --expect-window-tracking
       - name: Launch packaged app (Linux X11)
         if: runner.os == 'Linux'
         run: |
@@ -61,6 +71,21 @@ jobs:
             xcompmgr > /tmp/capri-compositor.log 2>&1 &
             node scripts/smoke-test.js "${{ matrix.executable }}"
           '
+      # an extra check of the X11 window watcher on Xvfb + openbox, not proof for real desktops
+      - name: X11 window watcher probe (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a bash -c '
+            openbox > /tmp/capri-openbox-probe.log 2>&1 &
+            sleep 1
+            xmessage -geometry 420x260+150+120 "Capri X11 probe" &
+            sleep 1
+            node scripts/x11-probe.js
+          '
+      # the installers, and what in-app updates read (latest*.yml, blockmaps; docs/UPDATES.md)
+      - name: Check update files
+        shell: bash
+        run: ls dist/latest*.yml
       - uses: actions/upload-artifact@v4
         with:
           name: capri-${{ matrix.platform }}
@@ -72,6 +97,8 @@ jobs:
             dist/*.deb
             dist/*.dmg
             dist/*.zip
+            dist/latest*.yml
+            dist/*.blockmap
 
   draft-release:
     name: Create or update draft release

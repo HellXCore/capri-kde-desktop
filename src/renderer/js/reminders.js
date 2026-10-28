@@ -4,6 +4,8 @@
 // the smallest model. They're kept in her settings and survive a restart; one that came due while
 // she was off, she brings up when she's back.
 
+import { pause } from './pause.js';
+
 const TRIGGER = /(rappelle[- ]?(?:moi|nous)|fais[- ]moi penser|pense à me (?:le )?(?:rappeler|dire)|n['’]oublie pas de me (?:le )?(?:rappeler|dire)|mets[- ]moi un rappel|remind me|set (?:a|an) (?:reminder|alarm)|recu[eé]rd(?:a|e)me|recordarme|av[ií]same|pon(?:me)? un recordatorio|me lembr[ae]|lembr[ae][- ]me|me avis[ae]|cri[ae] um lembrete|напомни(?:те)?(?: мне)?|поставь напоминание)/i;
 
 // small numbers said in words (in 5 of her languages)
@@ -182,8 +184,10 @@ export class Reminders {
     this.host.setConfig({ reminders: this.list });
   }
 
+  // Paused (screen locked, asleep: pause.js), they're still kept and come due as always, but she
+  // brings one up only once you're back (one at a time, the earliest first).
   check() {
-    if (this.firing.size || !this.onDue) return;
+    if (this.firing.size || !this.onDue || pause.paused) return;
     const due = this.upcoming.find((r) => r.at <= Date.now());
     if (!due) return;
     this.firing.add(due.id);
