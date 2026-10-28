@@ -9,7 +9,7 @@ const { releaseFiles, draftPayload } = require('../scripts/draft-release');
 test('release requires a non-empty installer for every platform and architecture', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-release-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const names = ['win-x64.exe', 'linux-x64.AppImage', 'linux-x64.deb', 'mac-arm64.dmg', 'mac-arm64.zip'].map((suffix) => `Capri-0.1.0-${suffix}`);
+  const names = ['win-x64.exe', 'linux-x86_64.AppImage', 'linux-amd64.deb', 'mac-arm64.dmg', 'mac-arm64.zip'].map((suffix) => `Capri-0.1.0-${suffix}`);
   for (const name of names.slice(0, -1)) fs.writeFileSync(path.join(dir, name), 'installer');
   assert.throws(() => releaseFiles(dir, '0.1.0'), /Missing installer.*mac-arm64.zip/);
   fs.writeFileSync(path.join(dir, names.at(-1)), '');

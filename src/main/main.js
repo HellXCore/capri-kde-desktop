@@ -30,7 +30,8 @@ const DEV = process.argv.includes('--dev');
 const SMOKE = process.argv.includes('--smoke-test');
 if (SMOKE) {
   app.setPath('userData', process.env.CAPRI_SMOKE_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-')));
-  config.save({ welcomed: true, claude: false, muted: true, motion: 'full' });
+  config.save({ welcomed: true, claude: false, muted: true, motion: 'full', render: process.platform === 'linux' ? 'software' : 'auto' });
+  if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
   setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
 }
 // A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
@@ -219,12 +220,12 @@ function createOverlay() {
     console.error('[capri] renderer gone:', details.reason);
     if (SMOKE) app.exit(1);
   });
-  if (DEV) {
+  if (DEV || SMOKE) {
     overlay.webContents.on('console-message', (e) => {
       const { level, message, lineNumber, sourceId } = e;
       console.log(`[renderer:${level}] ${message} (${String(sourceId).split('/').pop()}:${lineNumber})`);
     });
-    if (process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
+    if (DEV && process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
   }
 }
 

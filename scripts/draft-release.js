@@ -8,8 +8,8 @@ const { execFileSync } = require('node:child_process');
 function releaseFiles(dir, version) {
   const expected = [
     `Capri-${version}-win-x64.exe`,
-    `Capri-${version}-linux-x64.AppImage`,
-    `Capri-${version}-linux-x64.deb`,
+    `Capri-${version}-linux-x86_64.AppImage`,
+    `Capri-${version}-linux-amd64.deb`,
     `Capri-${version}-mac-arm64.dmg`,
     `Capri-${version}-mac-arm64.zip`,
   ];
