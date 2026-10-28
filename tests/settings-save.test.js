@@ -256,3 +256,35 @@ test('macOS app menu: Cmd+W / Cmd+M never reach the overlay; no default menu out
   assert.match(menu, dev);
   assert.match(src, /else if \(!DEV\) Menu\.setApplicationMenu\(null\)/);
 });
+
+// CAPRI-05: her initiative, picked in the window like her other choices
+test('initiative: one of quiet, normal, active, saved as it is, reset to normal, in every language', () => {
+  for (const level of ['quiet', 'normal', 'active']) {
+    const res = checkPatch({ initiative: level }, ctx());
+    assert.equal(res.ok, true, level);
+    assert.deepEqual(toConfig(res.values, {}).patch, { initiative: level });
+  }
+  for (const v of ['loud', '', null, 1, true]) assert.deepEqual(checkPatch({ initiative: v }, ctx()).fields, { initiative: 'choice' });
+  assert.equal(config.DEFAULTS.initiative, 'normal');
+  assert.equal(resetPatch(config.DEFAULTS).initiative, 'normal');
+  for (const code of LANGS) {
+    assert.ok(SETTINGS[code].initiativeNote, code);
+    for (const key of ['initiative', 'initiativeQuiet', 'initiativeNormal', 'initiativeActive']) assert.ok(TRAY[code][key], `${code} ${key}`);
+    const r = settingsView({ cfg: { ...config.DEFAULTS, initiative: 'quiet' }, lang: code }).sections
+      .find((s) => s.id === 'behavior').rows.find((x) => x.id === 'initiative');
+    assert.equal(r.value, TRAY[code].initiativeQuiet);
+    assert.deepEqual(r.control.options.map((o) => o.value), ['quiet', 'normal', 'active']);
+    assert.equal(r.control.value, 'quiet');
+    assert.equal(r.control.note, SETTINGS[code].initiativeNote);
+  }
+  // an old config without it, or with something unknown: shown as normal
+  const r = settingsView({ cfg: { initiative: 'loud' }, lang: 'en' }).sections.find((s) => s.id === 'behavior').rows.find((x) => x.id === 'initiative');
+  assert.equal(r.control.value, 'normal');
+});
+
+test('initiative: saved through commit and read back from a fresh profile', () => {
+  freshProfile(JSON.stringify({ lang: 'en' }));
+  assert.equal(config.load().initiative, 'normal'); // an old config without it
+  config.commit(toConfig(checkPatch({ initiative: 'active' }, ctx()).values, config.load()).patch);
+  assert.equal(config.load(true).initiative, 'active');
+});

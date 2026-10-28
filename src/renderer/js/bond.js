@@ -10,7 +10,8 @@
 // a while on it and, once she's attached enough, she goes and sits on its window, glares at you and
 // takes it over for a moment. Then she sulks for a bit: click her and she turns her back on you.
 
-import { pick, fmt, today } from './util.js';
+import { fmt, today } from './util.js';
+import { pickLine } from './initiative.js';
 
 // the xp each stage starts at; 1000 is 100 %
 export const STAGES = [0, 100, 300, 550, 850];
@@ -178,6 +179,7 @@ export class Jealousy {
     this.noticed = {};    // key -> when she last said something about it
     this.acted = { at: 0, date: today(), n: 0 };
     this.sulk = null;     // { key, until, clicks }
+    this.initiative = null; // how much she speaks up on her own (initiative.js); none: as always
     try {
       this.tally = JSON.parse(localStorage.getItem(TALLY)) || null;
     } catch {
@@ -247,18 +249,20 @@ export class Jealousy {
     if (capri.busy || capri.dragging || capri.stowed || capri.dormant || capri.hidden || capri.act) return false;
     if (!['stand', 'sit'].includes(capri.stance) || capri.mode === 'alert' || capri.mode === 'sleep' || capri.pointing) return false;
     if (this.chat.open || this.guide.running) return false;
+    if (this.initiative && !this.initiative.allow('jealous')) return false; // her initiative: quiet, or not yet
     return !panel.visible || ['idle', 'info'].includes(panel.current?.kind);
   }
 
   // She saw it: she turns to it and says something. The more attached, the less she lets it go.
   notice(key, id) {
     this.noticed[key] = Date.now();
+    this.initiative?.mark('jealous');
     const stage = this.bond.stage;
     const tier = stage >= 4 ? 'high' : stage >= 2 ? 'mid' : 'low';
     const win = id && this.capri.windows.wins.find((w) => w.id === id);
     const toward = win ? Math.sign(win.x + win.w / 2 - this.capri.pos.x) || 1 : this.capri.towardCenter();
     this.capri.perform(stage >= 2 ? 'glare' : 'curious', toward);
-    this.panel.say({ kind: 'info', face: ['aside', 'aside', 'look', 'look', 'many'][stage], line: fmt(pick(this.t[tier]), { rival: RIVALS[key] }), hold: 4500 });
+    this.panel.say({ kind: 'info', face: ['aside', 'aside', 'look', 'look', 'many'][stage], line: fmt(pickLine(this.t[tier]), { rival: RIVALS[key] }), hold: 4500 });
     if (stage >= 1 && this.bond.feeling !== 'sulk') this.bond.feel('jealous', { rival: RIVALS[key] });
   }
 
@@ -268,11 +272,12 @@ export class Jealousy {
     if (!win) return;
     this.acted.at = Date.now();
     this.acted.n += 1;
+    this.initiative?.mark('jealous');
     this.lately[f.key] = 0;
     this.noticed[f.key] = Date.now();
     this.bond.lose(2);
     this.panel.hide();
-    const say = fmt(pick(this.t.say), { rival: RIVALS[f.key] });
+    const say = fmt(pickLine(this.t.say), { rival: RIVALS[f.key] });
     if (await this.capri.jealous(win, { say })) {
       this.sulk = { key: f.key, until: Date.now() + SULK_MS, clicks: 0 };
       this.bond.feel('sulk', { rival: RIVALS[f.key] });
@@ -290,12 +295,12 @@ export class Jealousy {
       this.sulk = null;
       this.bond.feel('forgiven');
       this.capri.perform('hop');
-      this.panel.say({ kind: 'idle', face: 'smug', line: pick(this.t.forgive), hold: 3500 });
+      this.panel.say({ kind: 'idle', face: 'smug', line: pickLine(this.t.forgive), hold: 3500 });
       return true;
     }
     const pointer = this.capri.mouse?.x ?? this.capri.pos.x;
     this.capri.perform('huff', pointer < this.capri.pos.x ? 1 : -1); // her head turned away from it
-    this.panel.say({ kind: 'idle', face: 'aside', line: fmt(pick(this.t.sulk), { rival }), hold: 3500 });
+    this.panel.say({ kind: 'idle', face: 'aside', line: fmt(pickLine(this.t.sulk), { rival }), hold: 3500 });
     return true;
   }
 

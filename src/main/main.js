@@ -607,6 +607,13 @@ function rebuildTray() {
         { label: t.watchNone, type: 'radio', checked: !cfg.claude, click: () => updateConfig({ claude: false }) },
       ],
     },
+    // how much she speaks up on her own (initiative.js): never errors, prompts, reminders or answers
+    {
+      label: t.initiative,
+      submenu: [['quiet', t.initiativeQuiet], ['normal', t.initiativeNormal], ['active', t.initiativeActive]].map(([initiative, label]) => ({
+        label, type: 'radio', checked: (cfg.initiative || 'normal') === initiative, click: () => updateConfig({ initiative }),
+      })),
+    },
     {
       label: t.motion,
       submenu: [['auto', t.motionAuto], ['full', t.motionFull], ['reduced', t.motionReduced]].map(([motion, label]) => ({

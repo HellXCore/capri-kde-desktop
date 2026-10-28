@@ -2,7 +2,8 @@
 // network, things you plug in (a USB stick, a phone, a controller...) and the games you play.
 // Her menu › React to my PC turns it off.
 
-import { pick, fmt } from './util.js';
+import { fmt } from './util.js';
+import { pickLine } from './initiative.js';
 
 const HOT = 85; // % of the processor, for HOT_FOR
 const HOT_FOR = 15000;
@@ -30,6 +31,7 @@ export class Pc {
   constructor({ capri, panel, brain, host, voice, chat, guide }) {
     Object.assign(this, { capri, panel, brain, host, voice, chat, guide });
     this.enabled = true;
+    this.initiative = null; // how much she speaks up on her own (initiative.js); none: as always
     this.wantsOut = () => true; // not put away in her settings
     this.hotSince = 0;
     this.hot = false;
@@ -58,8 +60,18 @@ export class Pc {
     return this.enabled && this.capri.mode !== 'alert' && !this.chat.open && !this.guide.running;
   }
 
-  say(line, face = 'smug', hold = 4500) {
-    if (this.quiet) this.panel.say({ kind: 'info', face, line, hold });
+  // kind: her initiative's kind for it ('pc'), or null for what she says whatever it is (the battery
+  // running out, the network gone) and what follows a line already said. True if it was shown.
+  say(line, face = 'smug', hold = 4500, kind = 'pc') {
+    if (!this.quiet) return false;
+    const show = () => this.panel.say({ kind: 'info', face, line, hold });
+    if (!kind || !this.initiative) return show() !== false;
+    return this.initiative.offer(kind, show);
+  }
+
+  // could she say a line of this kind of her initiative's now
+  may(kind = 'pc') {
+    return this.quiet && (!this.initiative || this.initiative.allow(kind));
   }
 
   // waits a few seconds for her to be free to move, if she's busy
@@ -77,16 +89,17 @@ export class Pc {
       this.hotSince = 0;
       if (this.hot && cpu < 55) {
         this.hot = false;
-        if (!this.panel.visible) this.say(pick(this.t.cool), 'calm', 3000);
+        if (!this.panel.visible) this.say(pickLine(this.t.cool), 'calm', 3000);
       }
       return;
     }
     this.hotSince ||= now;
     if (this.hot || now - this.hotSince < HOT_FOR || now - this.hotAt < HOT_EVERY || !this.quiet) return;
-    this.hot = true;
     this.hotAt = now;
+    if (!this.may()) return; // not now (her initiative): nor its "cooled down" after
     this.capri.wake();
-    this.say(fmt(pick(this.t.hot), { cpu }), 'wide', 5000);
+    if (!this.say(fmt(pickLine(this.t.hot), { cpu }), 'wide', 5000)) return;
+    this.hot = true;
     this.voice.play('charge');
     if (await this.whenFree()) this.capri.perform('overheat');
   }
@@ -109,10 +122,9 @@ export class Pc {
         this.chargerAt = now;
         if (charging) {
           this.warned = 1;
-          this.say(pick(this.t.charging), 'laugh', 3500);
-          this.capri.recharge();
+          if (this.say(pickLine(this.t.charging), 'laugh', 3500)) this.capri.recharge();
         } else {
-          this.say(pick(this.t.unplugged), 'aside', 3500);
+          this.say(pickLine(this.t.unplugged), 'aside', 3500);
         }
       }
     }
@@ -121,7 +133,7 @@ export class Pc {
     if (at >= this.warned) return;
     this.warned = at;
     this.capri.wake();
-    this.say(fmt(pick(at === 0.05 ? this.t.critical : this.t.low), { level: Math.round(level * 100) }), 'aside', 6000);
+    this.say(fmt(pickLine(at === 0.05 ? this.t.critical : this.t.low), { level: Math.round(level * 100) }), 'aside', 6000, null);
     if (await this.whenFree()) this.capri.drain();
   }
 
@@ -132,7 +144,7 @@ export class Pc {
       if (navigator.onLine || !this.enabled) return;
       this.cutOff = true;
       this.voice.play('error');
-      this.say(pick(this.t.offline), 'wide', 5000);
+      this.say(pickLine(this.t.offline), 'wide', 5000, null);
       this.capri.hurt();
     }, 4000);
   }
@@ -141,8 +153,8 @@ export class Pc {
     clearTimeout(this.offlineTimer);
     if (!this.cutOff) return;
     this.cutOff = false;
+    if (!this.say(pickLine(this.t.online), 'laugh', 3500)) return;
     this.voice.play('hello');
-    this.say(pick(this.t.online), 'laugh', 3500);
     if (this.capri.free) this.capri.perform('hop');
   }
 
@@ -157,7 +169,7 @@ export class Pc {
       const added = usb.find((d) => !this.drives.includes(d));
       const removed = this.drives.find((d) => !usb.includes(d));
       if (added) this.stick(added);
-      else if (removed) this.say(pick(this.t.usbOut), 'smug', 3500);
+      else if (removed) this.say(pickLine(this.t.usbOut), 'smug', 3500);
     }
     this.drives = usb;
 
@@ -175,17 +187,19 @@ export class Pc {
 
   // a USB stick: she dives into it to have a look
   async stick(drive) {
+    if (!this.may()) return;
     this.capri.wake();
-    this.say(fmt(pick(this.t.usb), { drive }), 'look', 2500);
+    if (!this.say(fmt(pickLine(this.t.usb), { drive }), 'look', 2500)) return;
     if (!this.quiet || !(await this.whenFree())) return;
     const { w, h } = this.capri.view;
-    if (await this.capri.visit({ x: w - 140, y: h - 6 })) this.say(pick(this.t.usbBack), 'smug', 4500);
+    if (await this.capri.visit({ x: w - 140, y: h - 6 })) this.say(pickLine(this.t.usbBack), 'smug', 4500, null);
   }
 
   // anything else plugged in or out: a phone, a controller, a headset...
   device(plug) {
     const kind = kindOf(plug);
     if (kind === 'drive' || Date.now() - this.plugAt < PLUG_EVERY) return;
+    if (!this.may()) return;
     this.plugAt = Date.now();
     const lines = plug.in ? this.t.plugIn : this.t.plugOut;
     this.capri.wake();
@@ -194,7 +208,7 @@ export class Pc {
       const { w, h } = this.capri.view;
       this.capri.zap(w - 140, h - 10);
     }
-    this.say(fmt(pick(lines[kind] || lines.device), { name: plug.name }), plug.in ? 'look' : 'aside', 4000);
+    this.say(fmt(pickLine(lines[kind] || lines.device), { name: plug.name }), plug.in ? 'look' : 'aside', 4000);
   }
 
   checkGame() {
@@ -205,8 +219,10 @@ export class Pc {
     if (!g.said && !g.gone && now - g.since >= GAME_AFTER) {
       g.said = true;
       if (this.capri.stowed || this.capri.mode === 'alert') return;
-      this.capri.wake();
-      this.say(fmt(pick(this.t.game), { game: g.name }), 'smug', 3000);
+      if (this.may()) {
+        this.capri.wake();
+        this.say(fmt(pickLine(this.t.game), { game: g.name }), 'smug', 3000);
+      }
       setTimeout(() => {
         if (this.game !== g || g.gone || this.capri.stowed || this.capri.mode === 'alert') return;
         g.put = true;
@@ -217,7 +233,7 @@ export class Pc {
     if (g.gone && now - g.gone >= GAME_OVER) {
       this.game = null;
       if (g.put && this.capri.stowed && this.wantsOut()) {
-        this.capri.unstow().then(() => this.say(pick(this.t.gameBack), 'look', 5000));
+        this.capri.unstow().then(() => this.say(pickLine(this.t.gameBack), 'look', 5000, null));
       }
     }
   }

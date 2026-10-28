@@ -11,6 +11,7 @@ const CHOICES = {
   motion: ['auto', 'full', 'reduced'],
   rest: ['corner', 'taskbar'],
   render: ['auto', 'gl', 'software'],
+  initiative: ['quiet', 'normal', 'active'],
 };
 const BOOLEANS = ['muted', 'follow', 'wander', 'possess', 'jealous', 'pcReact', 'watchScreen', 'autostart'];
 // a key: printable, no spaces, of a sensible length
@@ -23,7 +24,7 @@ const URL_MAX = 2048;
 // yours: your name, her persona, your lines, memories, reminders, your bond, the chat history.
 const RESET_KEYS = [
   'lang', 'scale', 'muted', 'volume', 'displayId', 'follow',
-  'motion', 'rest', 'wander', 'possess', 'jealous', 'pcReact', 'watchScreen',
+  'motion', 'rest', 'wander', 'possess', 'jealous', 'pcReact', 'watchScreen', 'initiative',
 ];
 
 function resetPatch(defaults) {
