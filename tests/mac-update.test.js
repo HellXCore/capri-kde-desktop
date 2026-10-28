@@ -156,3 +156,78 @@ test('the zip for this Mac is picked, never the dmg', () => {
   assert.equal(pickZip([files[0]], 'arm64'), null);
   assert.equal(pickZip([f('Capri-0.2.0-mac-x64.zip')], 'arm64'), null);
 });
+
+test('a symlink in place of the app (ditto keeps them) is refused, nothing moved', async (t) => {
+  const s = setup(t, { apps: 0 });
+  const installer = s.make({
+    exec: async (cmd, args) => {
+      if (cmd.endsWith('ditto')) fs.symlinkSync(s.tmpDir, path.join(args[3], 'Capri.app'));
+      return '';
+    },
+  });
+  await installer.download(s.files, '0.2.0');
+  await assert.rejects(installer.install('0.2.0'), /not a folder/);
+  assert.equal(exe(s.bundle), 'old');
+  assert.deepEqual(fs.readdirSync(s.parent), ['Capri.app']);
+  assert.equal(s.relaunched(), 0);
+});
+
+test('cleanup never removes the running bundle, even one named like the backup', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-mac-cleanup-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bundle = path.join(root, BACKUP);
+  fs.mkdirSync(path.join(bundle, 'Contents', 'MacOS'), { recursive: true });
+  cleanup({ exePath: path.join(bundle, 'Contents', 'MacOS', 'Capri') });
+  assert.ok(fs.existsSync(bundle));
+});
+
+// Real ditto, plutil and xattr (codesign played: these test bundles carry no executable to sign),
+// in folders with spaces and Cyrillic, as a Mac may well have them.
+test('macOS tools: a real zip installed into a folder with spaces and Cyrillic', { skip: process.platform !== 'darwin' }, async (t) => {
+  const { execFile } = require('node:child_process');
+  const real = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, (err, out, errOut) => (err ? reject(new Error(String(errOut || err.message))) : resolve(String(out)))));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'capri mac update '));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const plist = (version) => `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>capri.desktop</string><key>CFBundleShortVersionString</key><string>${version}</string></dict></plist>`;
+  const makeApp = (app, version, body) => {
+    fs.mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(app, 'Contents', 'Info.plist'), plist(version));
+    fs.writeFileSync(path.join(app, 'Contents', 'MacOS', 'Capri'), body);
+    fs.mkdirSync(path.join(app, 'Contents', 'Resources', 'файлы с пробелами'), { recursive: true });
+    fs.writeFileSync(path.join(app, 'Contents', 'Resources', 'файлы с пробелами', 'её заметка.txt'), body);
+  };
+  const parent = path.join(root, 'Мои программы');
+  const bundle = path.join(parent, 'Capri Beta.app');
+  makeApp(bundle, '0.1.0', 'old');
+  const build = path.join(root, 'build dir');
+  makeApp(path.join(build, 'Capri.app'), '0.2.0', 'new');
+  const zip = path.join(root, 'Capri-0.2.0-mac-arm64.zip');
+  await real('/usr/bin/ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', path.join(build, 'Capri.app'), zip]);
+  const bytes = fs.readFileSync(zip);
+  const tmpDir = path.join(root, 'tmp dir');
+  fs.mkdirSync(tmpDir);
+  let relaunched = 0;
+  const calls = [];
+  const installer = createMacInstaller({
+    exePath: path.join(bundle, 'Contents', 'MacOS', 'Capri'),
+    tmpDir,
+    arch: 'arm64',
+    exec: (cmd, args) => { calls.push(path.basename(cmd)); return cmd.endsWith('codesign') ? Promise.resolve('') : real(cmd, args); },
+    download: async (url, dest) => fs.copyFileSync(zip, dest),
+    relaunch: () => { relaunched++; },
+  });
+  const files = [{ url: new URL('https://github.com/Libes6/capri-desktop/releases/download/fork-v0.2.0/Capri-0.2.0-mac-arm64.zip'), info: { sha512: sha512(bytes), size: bytes.length } }];
+  await installer.download(files, '0.2.0');
+  await installer.install('0.2.0');
+  assert.equal(exe(bundle), 'new');
+  assert.equal(fs.readFileSync(path.join(bundle, 'Contents', 'Resources', 'файлы с пробелами', 'её заметка.txt'), 'utf8'), 'new');
+  assert.equal(exe(path.join(parent, BACKUP)), 'old');
+  assert.deepEqual(fs.readdirSync(parent).sort(), [BACKUP, 'Capri Beta.app'].sort());
+  assert.deepEqual(calls, ['ditto', 'plutil', 'plutil', 'plutil', 'codesign', 'xattr']);
+  assert.equal(relaunched, 1);
+  cleanup({ exePath: path.join(bundle, 'Contents', 'MacOS', 'Capri'), tmpDir });
+  assert.deepEqual(fs.readdirSync(parent), ['Capri Beta.app']);
+  assert.deepEqual(fs.readdirSync(tmpDir), []);
+});

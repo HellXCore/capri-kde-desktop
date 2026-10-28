@@ -51,7 +51,7 @@ function updateError(err, extra = {}) {
   const code = String(err?.code ?? '');
   let category = 'other';
   let reason = null;
-  if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|code ?sign|integrity|bundle (id|version)/i.test(message)) {
+  if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|code ?sign|integrity|bundle (id|version|check)/i.test(message)) {
     category = 'signature';
   } else if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|socket hang up|timed? ?out|offline|network|status code 5\d\d|\b50[234]\b/i.test(message)
     || /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)$/.test(code)) {
@@ -217,8 +217,18 @@ function updaterTransport(updater) {
           }
         },
         async install() {
-          // silent (the one-click installer), and Capri starts again afterwards
-          updater.quitAndInstall(true, true);
+          // silent (the one-click installer), and Capri starts again afterwards. An installer it
+          // can't start (no verified download, quitAndInstall already called) is only an 'error'
+          // event, emitted synchronously, and nothing quits: said, not left "installing" forever.
+          let failed = null;
+          const onError = (err) => { failed = failed || err; };
+          updater.on('error', onError);
+          try {
+            updater.quitAndInstall(true, true);
+          } finally {
+            updater.removeListener('error', onError);
+          }
+          if (failed) throw failed;
         },
       };
     },
