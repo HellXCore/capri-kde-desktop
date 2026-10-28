@@ -157,19 +157,28 @@ function control(row) {
     saveButton.id = `save-${row.id}`;
     line.append(input, saveButton);
     box.append(line);
-    if (c.type === 'key' && c.env) box.append(el('p', 'settings__hint', t.keyEnv));
+    if (c.type === 'key' && c.env) {
+      const env = el('p', 'settings__hint', t.keyEnv);
+      env.id = `hint-${row.id}-env`;
+      box.append(env);
+    }
     const error = el('p', 'settings__fieldError');
     error.id = `error-${row.id}`;
     error.setAttribute('role', 'alert');
     error.hidden = true;
     box.append(error);
-    input.setAttribute('aria-describedby', error.id);
   }
   input.id = id;
   if (c.disabled) input.disabled = true;
-  for (const [cls, text] of [['settings__hint', c.reason], ['settings__hint', c.note]]) {
-    if (text) box.append(el('p', cls, text));
+  for (const [i, text] of [c.reason, c.note].entries()) {
+    if (!text) continue;
+    const hint = el('p', 'settings__hint', text);
+    hint.id = `hint-${row.id}-${i}`;
+    box.append(hint);
   }
+  // read with the field by a screen reader: its hints (why it's off, what it does) and its error
+  const described = [...box.querySelectorAll('.settings__hint, .settings__fieldError')].map((node) => node.id);
+  if (described.length) input.setAttribute('aria-describedby', described.join(' '));
   if (c.restart) {
     const line = el('div', 'settings__restart');
     line.append(el('p', 'settings__restartText', c.restart.label), button(c.restart.button, () => host.restart()));
