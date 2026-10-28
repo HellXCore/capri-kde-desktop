@@ -14,7 +14,8 @@ const closeButton = document.getElementById('close');
 const statusLine = document.getElementById('status');
 const resetButton = document.getElementById('reset');
 
-let current = null; // the id of the open section
+// the id of the open section (a link can ask for one: #about from her menu's "Update available")
+let current = decodeURIComponent(location.hash.slice(1)) || null;
 let view = null;
 // kept across redraws: what's typed in a key or address field, the errors under fields, the reset
 // confirmation being open
@@ -91,9 +92,80 @@ function button(text, onClick, className = 'settings__button') {
   return node;
 }
 
+// The updates of the app (updates.js): what the updater says, the version offered and its notes
+// (plain text), the progress, and the buttons that fit. Drawn again on its own as the status moves.
+function updateText(st) {
+  const t = view.text;
+  const v = (text) => (text || '').replaceAll('{version}', st.version || '');
+  switch (st.kind) {
+    case 'disabled': return { feed: t.updOffFeed, platform: t.updOffPlatform, unconfigured: t.updOffPlatform }[st.reason] || t.updOffDev;
+    case 'idle': return t.updIdle;
+    case 'checking': return t.updChecking;
+    case 'current': return t.updCurrent;
+    case 'available': return v(t.updAvailable);
+    case 'downloading': return v(t.updDownloading);
+    case 'downloaded': return v(t.updDownloaded);
+    case 'installing': return v(t.updInstalling);
+    case 'error':
+      if (st.category === 'network') return t.updNetwork;
+      if (st.category === 'signature') return t.updSignature;
+      if (st.reason === 'feed') return t.updFeed;
+      if (st.reason === 'location') return t.updLocation;
+      return `${t.updFailed}: ${st.error}`;
+    default: return '';
+  }
+}
+
+function fillUpdate(box, st) {
+  const t = view.text;
+  const focused = box.contains(document.activeElement) ? document.activeElement.id : null;
+  const busy = ['checking', 'downloading', 'installing'].includes(st.kind);
+  const state = el('p', `settings__updateState${st.kind === 'error' ? ' settings__updateState--error' : ''}`, updateText(st));
+  state.id = 'update-state';
+  state.setAttribute('role', 'status');
+  const nodes = [state];
+  if (st.version && st.kind !== 'error') nodes.push(el('p', 'settings__hint', `${t.updOffered}: ${st.current} → ${st.version}`));
+  if (st.mode === 'notify' && st.version) nodes.push(el('p', 'settings__hint', t.updPackage));
+  if (st.kind === 'downloading') {
+    const bar = el('progress', 'settings__progress');
+    bar.id = 'update-progress';
+    if (st.total) Object.assign(bar, { max: st.total, value: Math.min(st.received, st.total) });
+    const mb = (n) => (n / 1048576).toFixed(1);
+    nodes.push(bar, el('p', 'settings__hint', st.total ? `${Math.floor((st.received / st.total) * 100)} % · ${mb(st.received)} / ${mb(st.total)} MB` : `${mb(st.received || 0)} MB`));
+  }
+  const actions = el('div', 'settings__actions settings__actions--start');
+  const add = (id, text, fn, className) => {
+    const b = button(text, fn, className);
+    b.id = id;
+    actions.append(b);
+    return b;
+  };
+  if (st.kind !== 'disabled') add('update-check', t.updCheck, () => host.updates.check()).disabled = busy;
+  if (st.kind === 'available' && st.canDownload) add('update-download', t.updDownload, () => host.updates.download(), 'settings__button settings__button--primary');
+  if (st.kind === 'downloaded') add('update-install', t.updInstall, () => confirmUpdate(st.version), 'settings__button settings__button--primary');
+  if (st.version && (st.mode === 'notify' || st.kind === 'error')) add('update-page', t.updPage, () => host.updates.page());
+  if (actions.children.length) nodes.push(actions);
+  if (st.notes && st.kind !== 'error') {
+    const notes = el('div', 'settings__notes', st.notes); // text, never HTML
+    notes.id = 'update-notes';
+    notes.setAttribute('aria-label', t.updNotes);
+    nodes.push(el('p', 'settings__label', t.updNotes), notes);
+  }
+  box.replaceChildren(...nodes);
+  const again = focused && document.getElementById(focused);
+  if (again && !again.disabled) again.focus();
+  else if (focused) (box.querySelector('button:not([disabled])') || box.closest('.settings__panel'))?.focus();
+}
+
 // the control of a row, by its type (settings-view.js)
 function control(row) {
   const c = row.control;
+  if (c.type === 'update') {
+    const box = el('div', 'settings__control settings__update');
+    box.id = 'update-box';
+    fillUpdate(box, c.status);
+    return box;
+  }
   const id = `field-${row.id}`;
   const box = el('div', 'settings__control');
   let input;
@@ -206,8 +278,10 @@ function section(s) {
     const item = el('div', 'settings__row');
     item.dataset.id = row.id;
     // a field to type in: the label above it, the whole width for it
-    if (['key', 'url'].includes(row.control?.type)) item.classList.add('settings__row--wide');
-    if (row.control) {
+    if (['key', 'url', 'update'].includes(row.control?.type)) item.classList.add('settings__row--wide');
+    if (row.control?.type === 'update') {
+      item.append(el('span', 'settings__label', row.label), control(row));
+    } else if (row.control) {
       const label = el('label', 'settings__label', row.label);
       label.htmlFor = `field-${row.id}`;
       // a key: whether one is saved, by the label
@@ -262,6 +336,45 @@ function resetBox() {
     }
   });
   return box;
+}
+
+// "Update and restart": asked once more, over the window, before main installs and restarts
+function confirmUpdate(version) {
+  const t = view.text;
+  document.getElementById('update-confirm-box')?.remove();
+  const box = el('div', 'settings__confirm');
+  box.id = 'update-confirm-box';
+  box.setAttribute('role', 'alertdialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-labelledby', 'update-confirm-title');
+  const heading = el('h2', 'settings__heading', t.updConfirm.replaceAll('{version}', version));
+  heading.id = 'update-confirm-title';
+  const done = () => {
+    box.remove();
+    (document.getElementById('update-install') || document.getElementById('update-check'))?.focus();
+  };
+  const no = button(t.updLater, done);
+  no.id = 'update-confirm-no';
+  const yes = button(t.updInstall, () => {
+    box.remove();
+    host.updates.install(true);
+  }, 'settings__button settings__button--primary');
+  yes.id = 'update-confirm-yes';
+  const actions = el('div', 'settings__actions');
+  actions.append(no, yes);
+  box.append(heading, el('p', 'settings__noteText', t.updConfirmDetail), actions);
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      (document.activeElement === no ? yes : no).focus();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      done();
+    }
+  });
+  document.body.append(box);
+  no.focus();
 }
 
 function showReset() {
@@ -326,6 +439,14 @@ resetButton.addEventListener('click', () => {
 });
 
 host.onView(render);
+host.onSection((id) => view?.sections.some((s) => s.id === id) && select(id, { focus: true }));
+host.updates.onStatus((status) => {
+  const box = document.getElementById('update-box');
+  if (!box || !view) return;
+  const row = view.sections.flatMap((s) => s.rows).find((r) => r.id === 'update');
+  if (row) row.control.status = status; // kept for the next full redraw
+  fillUpdate(box, status);
+});
 render(await host.view());
 tabs.querySelector('[aria-selected="true"]')?.focus();
 host.ready({ sections: view.sections.length, focused: document.activeElement?.id || null });

@@ -39,6 +39,7 @@ function select(key, pairs, value) {
  *   screen: { index, count, width, height } of the screen she's on; screens: [{ id, width, height }]
  *   renderNow: the display mode she was started with
  *   about: { version, platform, arch, electron, session }
+ *   updates: the updater's view (updates.js), or nothing
  */
 function settingsView(facts) {
   const { features = {}, about = {} } = facts;
@@ -173,6 +174,7 @@ function settingsView(facts) {
     ],
     about: [
       { id: 'version', label: s.version, value: about.version || s.none },
+      ...(facts.updates ? [{ id: 'update', label: s.updates, control: { type: 'update', status: facts.updates } }] : []),
       {
         id: 'system',
         label: s.system,
@@ -195,6 +197,7 @@ function settingsView(facts) {
     'saved', 'saveFailed', 'invalid', 'moving', 'asks', 'keyPlaceholder', 'keySave', 'keySaved', 'keyEmpty', 'keyFormat',
     'keyRejected', 'keyEnv', 'urlSave', 'urlInvalid', 'reset', 'resetTitle', 'resetWhat', 'resetKeeps', 'resetConfirm',
     'cancel', 'resetDone', 'menuNote',
+    ...Object.keys(s).filter((key) => key.startsWith('upd')),
   ].map((key) => [key, s[key]]));
 
   return {

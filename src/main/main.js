@@ -18,6 +18,7 @@ const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { createCapabilities } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
+const { startUpdates, isReleasePage } = require('./updates');
 const settingsPatch = require('./settings-patch');
 const llm = require('./llm');
 const ollama = require('./ollama');
@@ -56,6 +57,9 @@ let overlay = null;
 let tray = null;
 let trayMenu = null; // also what she opens when you right-click her
 let settings = null; // her settings window (settings-window.js), made in main()
+let updates = null; // the app's updates (updates.js): what her settings and her menu show
+let updateOffered = null; // the version her menu offers
+let updateSaid = null; // the version she has mentioned (once)
 let demoTimer = null;
 let windowWatch = null;
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
@@ -332,7 +336,23 @@ function settingsFacts() {
     autostart: caps.has('autostart') && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
     screen: { index: Math.max(0, screens.findIndex((d) => d.id === current.id)), count: screens.length, width: current.size.width, height: current.size.height },
     about: { version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron, session: caps.session },
+    updates: updates?.view(),
   };
+}
+
+// The updater moved: her settings window hears of it, her menu when what it offers changes, and
+// she may mention a new version once (an optional line, initiative.js decides).
+function updatesChanged(view) {
+  settings?.send('updates:status', view);
+  const offered = ['available', 'downloading', 'downloaded'].includes(view.kind) ? view.version : null;
+  if (offered !== updateOffered) {
+    updateOffered = offered;
+    rebuildTray();
+  }
+  if (view.kind === 'available' && updateSaid !== view.version) {
+    updateSaid = view.version;
+    sendCommand('update', { version: view.version });
+  }
 }
 
 function openSettings() {
@@ -494,6 +514,7 @@ function rebuildTray() {
     },
     { label: t.custom, click: () => sendCommand('customize') },
     { label: cfg.visible ? t.hide : t.show, accelerator: 'Ctrl+Alt+C', click: () => toggleVisible() },
+    ...(updateOffered ? [{ label: t.updateAvailable(updateOffered), click: () => settings?.open('about') }] : []),
     { label: t.settings, click: openSettings },
     { type: 'separator' },
     {
@@ -899,6 +920,11 @@ function registerIpc() {
     if (DEV || SMOKE) console.log('[capri] settings ready:', JSON.stringify(info));
     settingsReady?.(info);
   });
+  ipcMain.handle('updates:check', (e) => (settings?.owns(e.sender) ? updates?.check() : null));
+  ipcMain.handle('updates:download', (e) => (settings?.owns(e.sender) ? updates?.download() : null));
+  // "Update and restart", confirmed in the window first (settings.js confirmUpdate)
+  ipcMain.handle('updates:install', (e, confirmed) => (settings?.owns(e.sender) ? updates?.install(async () => confirmed === true) : null));
+  ipcMain.on('updates:page', (e) => settings?.owns(e.sender) && isReleasePage(updates?.page()) && shell.openExternal(updates.page()));
   ipcMain.handle('hooks:status', () => activeHooks().status());
   ipcMain.handle('config:set', (_e, patch) => updateConfig(patch));
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
@@ -1378,6 +1404,7 @@ function main() {
       // no Dock icon on macOS: the app has to come forward for its window to get the keyboard
       focusApp: () => process.platform === 'darwin' && app.focus({ steal: true }),
     });
+    updates = startUpdates({ app, smoke: SMOKE, onChange: updatesChanged });
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it

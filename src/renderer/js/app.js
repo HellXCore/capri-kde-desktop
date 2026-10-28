@@ -692,6 +692,9 @@ async function boot() {
       case 'goScreen': // a screen picked in her menu: she goes there
         goToScreen(cmd.id);
         break;
+      case 'update': // a new version of her (updates.js), once: an optional word, never over anything
+        initiative.offer('ambient', () => panel.say({ kind: 'info', face: 'smug', line: pickLine(t.update).replaceAll('{version}', String(cmd.version || '')), hold: 4200 }));
+        break;
       case 'screens': // a screen plugged in, unplugged or moved
         refreshScreens();
         break;

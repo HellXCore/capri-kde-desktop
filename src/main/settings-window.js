@@ -39,8 +39,10 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
     win.focus();
   }
 
-  function open() {
+  // section: the one to show (her menu's "Update available" → about)
+  function open(section) {
     if (alive()) {
+      if (section) win.webContents.send('settings:section', section);
       bringForward();
       return win;
     }
@@ -75,7 +77,7 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
       win = null;
       onClosed();
     });
-    win.loadURL(url);
+    win.loadURL(section ? `${url}#${encodeURIComponent(section)}` : url);
     return win;
   }
 
@@ -91,10 +93,16 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
     win.webContents.send('settings:view', v);
   }
 
+  // a message to the window's page, if it's there (the updater's progress)
+  function send(channel, data) {
+    if (alive()) win.webContents.send(channel, data);
+  }
+
   return {
     open,
     close,
     update,
+    send,
     isOpen: alive,
     window: () => (alive() ? win : null),
     // whether an IPC message comes from this window (the overlay can't use its channels)
