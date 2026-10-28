@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: desktop-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -43,7 +43,7 @@ jobs:
           cache: npm
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 libgtk-3-0 libnss3 libasound2
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb dbus-x11 openbox xcompmgr libgtk-3-0 libnss3 libasound2
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - name: Package installers
@@ -55,7 +55,12 @@ jobs:
         run: node scripts/smoke-test.js "${{ matrix.executable }}"
       - name: Launch packaged app (Linux X11)
         if: runner.os == 'Linux'
-        run: dbus-run-session -- xvfb-run -a node scripts/smoke-test.js "${{ matrix.executable }}"
+        run: |
+          dbus-run-session -- xvfb-run -a bash -c '
+            openbox > /tmp/capri-openbox.log 2>&1 &
+            xcompmgr > /tmp/capri-compositor.log 2>&1 &
+            node scripts/smoke-test.js "${{ matrix.executable }}"
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: capri-${{ matrix.platform }}

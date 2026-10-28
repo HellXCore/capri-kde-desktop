@@ -30,7 +30,7 @@ const DEV = process.argv.includes('--dev');
 const SMOKE = process.argv.includes('--smoke-test');
 if (SMOKE) {
   app.setPath('userData', process.env.CAPRI_SMOKE_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-')));
-  config.save({ welcomed: true, claude: false, muted: true, motion: 'full', render: process.platform === 'linux' ? 'software' : 'auto' });
+  config.save({ welcomed: true, claude: false, muted: true, motion: 'reduced', render: process.platform === 'linux' ? 'software' : 'auto' });
   if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
   setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
 }
