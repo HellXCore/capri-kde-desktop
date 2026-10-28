@@ -56,15 +56,44 @@ function load(fresh = false) {
   return cache;
 }
 
+// Written whole to a file beside it, then moved over it: a crash or a full disk mid-write never
+// leaves half a config behind. Throws when it can't be written.
+function write(next) {
+  const target = file();
+  const temp = `${target}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(temp, JSON.stringify(next, null, 2));
+    fs.renameSync(temp, target);
+  } catch (err) {
+    try {
+      fs.rmSync(temp, { force: true });
+    } catch {
+      // nothing more to clean up
+    }
+    throw err;
+  }
+}
+
+// Changes kept even when the file can't be written (the error is logged): what her menu and the
+// overlay have always done, so she goes on as asked until she restarts.
 function save(patch) {
   cache = { ...load(), ...patch };
   try {
-    fs.mkdirSync(path.dirname(file()), { recursive: true });
-    fs.writeFileSync(file(), JSON.stringify(cache, null, 2));
+    write(cache);
   } catch (err) {
     console.error('[capri] could not save config:', err.message);
   }
   return cache;
 }
 
-module.exports = { load, save, file, DEFAULTS };
+// Changes kept only once they are on disk: when the file can't be written this throws and nothing
+// changes, so a settings window never shows as saved what would be lost at the next start.
+function commit(patch) {
+  const next = { ...load(), ...patch };
+  write(next);
+  cache = next;
+  return cache;
+}
+
+module.exports = { load, save, commit, file, DEFAULTS };

@@ -26,7 +26,7 @@ const facts = (extra = {}) => ({
 });
 const row = (view, section, id) => view.sections.find((s) => s.id === section).rows.find((r) => r.id === id);
 
-test('the four sections, in order, each with rows; only About is not from the menu', () => {
+test('the four sections, in order, each with rows; the note on her menu at the top of General', () => {
   const view = settingsView(facts());
   assert.deepEqual(view.sections.map((s) => s.id), SECTIONS);
   assert.deepEqual(SECTIONS, ['general', 'behavior', 'ai', 'about']);
@@ -34,7 +34,7 @@ test('the four sections, in order, each with rows; only About is not from the me
     assert.ok(s.rows.length > 0, s.id);
     for (const r of s.rows) assert.equal(typeof r.value, 'string', `${s.id}.${r.id}`);
   }
-  assert.deepEqual(view.sections.map((s) => s.fromMenu), [true, true, true, false]);
+  assert.deepEqual(view.sections.map((s) => s.fromMenu), [true, false, false, false]);
 });
 
 test('every language has every settings text, and the menu item', () => {
@@ -75,9 +75,11 @@ test('unavailable features say so instead of showing a state', () => {
 test('size, sound, the assistant watched and no assistant', () => {
   const view = settingsView(facts({ cfg: { ...DEFAULTS, scale: 0.8, muted: true } }));
   assert.equal(row(view, 'general', 'scale').value, TRAY.en.large);
-  assert.equal(row(view, 'general', 'sound').value, TRAY.en.mute);
+  assert.equal(row(view, 'general', 'muted').value, SETTINGS.en.on);
+  assert.equal(row(view, 'general', 'muted').control.value, true);
   assert.equal(row(settingsView(facts({ cfg: { ...DEFAULTS, scale: 0.7 } })), 'general', 'scale').value, '70 %');
-  assert.equal(row(settingsView(facts()), 'general', 'sound').value, '70 %');
+  assert.equal(row(settingsView(facts()), 'general', 'volume').value, '70 %');
+  assert.equal(row(settingsView(facts()), 'general', 'volume').control.value, 70);
   const codex = settingsView(facts({ assistant: { id: 'codex', name: 'Codex' } }));
   assert.equal(row(codex, 'ai', 'assistant').value, 'Codex');
   assert.equal(row(codex, 'ai', 'hooks').label, 'Hooks Codex');
@@ -207,7 +209,9 @@ test('the settings page reaches main only through its own preload', () => {
   const root = path.join(__dirname, '..');
   const preload = fs.readFileSync(path.join(root, 'src/settings-preload.js'), 'utf8');
   const channels = [...preload.matchAll(/ipcRenderer\.\w+\('([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(channels)].sort(), ['settings:close', 'settings:menu', 'settings:ready', 'settings:view']);
+  assert.deepEqual([...new Set(channels)].sort(), [
+    'settings:close', 'settings:key', 'settings:menu', 'settings:ready', 'settings:reset', 'settings:restart', 'settings:set', 'settings:view',
+  ]);
   const html = fs.readFileSync(path.join(root, 'src/renderer/settings.html'), 'utf8');
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /script-src 'self'/);
