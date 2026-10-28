@@ -1,6 +1,10 @@
-> **Libes6 fork — v0.1.0**
->
-> Cross-platform packaging and startup fixes based on upstream 0.4.4. Our version sequence starts at 0.1.0; it does not follow upstream numbering. Release tags use `fork-v0.1.0` to preserve the inherited upstream `v0.1.0` tag. The original documentation below describes the full Windows feature set.
+# Capri KDE Desktop (CachyOS & Plasma 6.8 Fork)
+
+This is a fork of [Libes6/capri-desktop](https://github.com) specifically patched for my setup **CachyOS** running **KDE Plasma 6.8**.
+
+### Key changes in this fork:
+* Fixed transparent window click-through and layout behavior under **XWayland**.
+* Optimized performance for Plasma 6.8 Wayland sessions.
 
 ## Fork builds and releases
 
@@ -12,17 +16,7 @@ Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` ch
 
 Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain Windows-only in 0.1.0. On macOS (Apple Silicon) a small bundled Swift helper reports window geometry and the window in front without any permission (no Screen Recording, no Accessibility), so she tracks windows, sits on them and rides along; window titles, AI/game detection and the other Windows-only features stay unavailable there, see [docs/MAC_WINDOW_TRACKING.md](docs/MAC_WINDOW_TRACKING.md). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation. Linux uses 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there; Windows/macOS retain event-driven tracking. Native GUI acceptance on every desktop environment is still required.
 
-### Automatic release pipeline
-
-`.github/workflows/build.yml` runs tests, builds installers and launches each packaged app on native Windows, Linux X11 and macOS ARM64 runners. Pull requests validate all three platforms without creating a release. A push/merge to `main` (or a manual run on `main`) creates or updates a **draft** `fork-v<package.json version>` only after all three jobs succeed. It attaches five installers and `SHA256SUMS.txt`, targeting the exact built commit. Only the release job has write permission.
-
-Successive merges update the same version's draft. Publish manually after reviewing/testing the artifacts. Once a version is published (or its tag points elsewhere), bump the version before the next release; the pipeline refuses to replace published binaries. Update both manifests with `npm version patch --no-git-tag-version` (or `minor`/`major`). Do not create the release tag yourself before the draft is ready.
-
-These initial builds have no Windows certificate or Apple Developer ID/notarization. macOS packaging may apply an ad-hoc signature, but that is not a trusted distribution signature. Configure distribution signing before treating the installers as production releases.
-
----
-
-**English** · [Français](README.fr.md)
+**English**
 
 # Capri
 
