@@ -32,7 +32,7 @@ jobs:
             script: dist:linux
             executable: dist/linux-unpacked/capri-desktop
           - platform: macos-arm64
-            runner: macos-15
+            runner: macos-26
             script: dist:mac
             executable: dist/mac-arm64/Capri.app/Contents/MacOS/Capri
     steps:
