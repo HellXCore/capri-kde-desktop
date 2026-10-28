@@ -15,9 +15,13 @@ const child = spawn(executable, [...(packaged ? [] : [root]), '--smoke-test'], {
   cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
 let ready = false;
+let settings = false; // her settings window opened, came back once, and closed on Escape
+let out = '';
 child.stdout.on('data', (chunk) => {
   process.stdout.write(chunk);
-  if (String(chunk).includes('[capri] smoke ready:')) ready = true;
+  out += String(chunk);
+  if (out.includes('[capri] smoke ready:')) ready = true;
+  if (out.includes('[capri] smoke settings: ok')) settings = true;
 });
 child.stderr.pipe(process.stderr);
 const timer = setTimeout(() => { console.error('Smoke process did not exit'); child.kill('SIGKILL'); }, 45000);
@@ -25,8 +29,8 @@ child.on('error', (err) => { console.error(err); process.exitCode = 1; clearTime
 child.on('close', (code) => {
   clearTimeout(timer);
   fs.rmSync(data, { recursive: true, force: true });
-  if (code !== 0 || !ready) {
-    console.error(`Smoke failed: exit=${code}, rendererReady=${ready}`);
+  if (code !== 0 || !ready || !settings) {
+    console.error(`Smoke failed: exit=${code}, rendererReady=${ready}, settingsWindow=${settings}`);
     process.exitCode = 1;
   }
 });
