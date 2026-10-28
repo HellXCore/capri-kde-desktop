@@ -1,10 +1,33 @@
-/* Look adapted from cyberpunk-css by alddesign (https://github.com/alddesign/cyberpunk-css), MIT License, Copyright (c) 2025 alddesign: the razor edge masks and the button, heading and table-bar clip shapes are taken from it; the rest is ours. */
+/* Look adapted from cyberpunk-css by alddesign (https://github.com/alddesign/cyberpunk-css): the razor edge masks and the button, heading and table-bar clip shapes are taken from it; the rest is ours. Its license:
+
+   MIT License
+
+   Copyright (c) 2025 github/alddesign
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. */
 
 /* ------------------------------------------------------------------
    Her settings window, in the style of Cyberpunk 2077's menus (CAPRI-12):
    yellow paper, black panels with cut corners, razor edges, cut buttons
    with a cyan offset shadow, headings underlined with a bar, a short
-   glitch on the headings now and then (none with reduced motion).
+   glitch on the headings as they come up and a twitch now and then
+   (none with reduced motion).
 ------------------------------------------------------------------- */
 
 @import url('tokens.css');
@@ -119,11 +142,12 @@ body {
   pointer-events: none;
 }
 
-/* diagonal stripes at the right of the band */
+/* diagonal stripes at the right of the band, in the room the title leaves */
 .settings__head::after {
   content: '';
-  flex: 0 1 132px;
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 132px;
   height: 14px;
   margin-left: auto;
   background: repeating-linear-gradient(115deg, var(--cp-yellow) 0 5px, transparent 5px 10px);
@@ -154,7 +178,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  animation: cp-glitch 9s steps(1, end) 2s infinite;
+  animation: cp-glitch 400ms steps(1, end) 150ms, cp-twitch 9s steps(1, end) 2s infinite;
 }
 
 /* ---------- sections: a black tile of tabs ---------- */
@@ -239,7 +263,7 @@ body {
   letter-spacing: 0.03em;
   color: inherit;
   overflow-wrap: anywhere;
-  animation: cp-glitch 11s steps(1, end) 1s infinite;
+  animation: cp-glitch 400ms steps(1, end) 150ms, cp-twitch 11s steps(1, end) 1s infinite;
 }
 
 .settings__heading::after {
@@ -809,32 +833,47 @@ body:has(> .settings__confirm)::after {
   color: var(--cp-paper);
 }
 
-/* ---------- the glitch: a few broken frames, then still for a long while ---------- */
+/* ---------- the glitch: a few broken frames as a heading comes up (the window opens, a section
+   is shown), then a twitch now and then. The broken frames (clip-path, text-shadow) are drawn
+   by the page frame by frame, so they run once; the twitch is only a transform, which the
+   compositor runs without the page, so the window does no work between two twitches. ---------- */
 
 @keyframes cp-glitch {
   0% {
-    transform: none;
-    text-shadow: var(--glitch-shadow);
-    clip-path: none;
-  }
-  90% {
-    transform: translateX(-3px);
+    translate: -3px;
     text-shadow: 2px 0 var(--cp-cyan), -2px 0 var(--cp-red);
     clip-path: polygon(-5% 45%, 105% 45%, 105% 110%, -5% 110%);
   }
-  91% {
-    transform: translateX(3px);
+  25% {
+    translate: 3px;
     clip-path: polygon(-5% -10%, 105% -10%, 105% 40%, -5% 40%);
   }
-  92% {
-    transform: translateX(-1px);
+  50% {
+    translate: -1px;
     text-shadow: 1px 0 var(--cp-cyan), -1px 0 var(--cp-red);
     clip-path: polygon(-5% 20%, 105% 20%, 105% 75%, -5% 75%);
   }
-  93% {
-    transform: none;
+  75%,
+  100% {
+    translate: none;
     text-shadow: var(--glitch-shadow);
     clip-path: none;
+  }
+}
+
+@keyframes cp-twitch {
+  0%,
+  93% {
+    transform: none;
+  }
+  90% {
+    transform: translateX(-3px);
+  }
+  91% {
+    transform: translateX(3px);
+  }
+  92% {
+    transform: translateX(-1px);
   }
 }
 
