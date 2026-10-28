@@ -82,6 +82,10 @@ jobs:
             sleep 1
             node scripts/x11-probe.js
           '
+      # the installers, and what in-app updates read (latest*.yml, blockmaps; docs/UPDATES.md)
+      - name: Check update files
+        shell: bash
+        run: ls dist/latest*.yml
       - uses: actions/upload-artifact@v4
         with:
           name: capri-${{ matrix.platform }}
@@ -93,6 +97,8 @@ jobs:
             dist/*.deb
             dist/*.dmg
             dist/*.zip
+            dist/latest*.yml
+            dist/*.blockmap
 
   draft-release:
     name: Create or update draft release

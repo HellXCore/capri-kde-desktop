@@ -269,6 +269,7 @@ export const LINES = {
     },
     // passée sur ton autre écran pour te suivre
     screens: { hello: ['Coucou, l’autre écran.', 'Tu bosses ici maintenant ? J’arrive.', 'Me voilà.'] },
+    update: ['Une nouvelle version de moi est sortie : {version}. C’est dans les réglages, quand tu veux.', 'Version {version} disponible. Je peux attendre.'],
     // elle réagit à ton PC (pc.js) : processeur, batterie, réseau, clé USB, jeu
     pc: {
       hot: ['Ton processeur est à fond. Moi aussi, je chauffe.', '{cpu} % de processeur. Il fait chaud là-dedans.', 'Ça chauffe ! Tu fais tourner quoi, là ?'],
@@ -622,6 +623,7 @@ export const LINES = {
     },
     // over on your other screen, following you
     screens: { hello: ['Hi, other screen.', 'Working over here now? Coming.', 'There you are.'] },
+    update: ['A new version of me is out: {version}. It’s in the settings, whenever you like.', 'Version {version} is available. No rush.'],
     // she reacts to your PC (pc.js): processor, battery, network, USB stick, game
     pc: {
       hot: ['Your processor is maxed out. I’m heating up too.', '{cpu}% CPU. It’s getting hot in here.', 'Things are heating up! What are you running?'],
@@ -971,6 +973,7 @@ export const LINES = {
     },
     // en tu otra pantalla, siguiéndote
     screens: { hello: ['Hola, otra pantalla.', '¿Ahora trabajas aquí? Voy.', 'Aquí estás.'] },
+    update: ['Salió una nueva versión de mí: {version}. Está en los ajustes, cuando quieras.', 'Versión {version} disponible. Sin prisa.'],
     // reacciona a tu PC (pc.js): procesador, batería, red, USB, juego
     pc: {
       hot: ['Tu procesador va a tope. Yo también me caliento.', '{cpu} % de CPU. Aquí dentro hace calor.', '¡Esto se calienta! ¿Qué estás ejecutando?'],
@@ -1322,6 +1325,7 @@ export const LINES = {
     },
     // na sua outra tela, te seguindo
     screens: { hello: ['Oi, outra tela.', 'Trabalhando aqui agora? Tô indo.', 'Aí está você.'] },
+    update: ['Saiu uma nova versão de mim: {version}. Está nas configurações, quando quiser.', 'Versão {version} disponível. Sem pressa.'],
     // ela reage ao seu PC (pc.js): processador, bateria, rede, pendrive, jogo
     pc: {
       hot: ['Seu processador tá no talo. Eu também tô esquentando.', '{cpu} % de CPU. Tá quente aqui dentro.', 'Tá esquentando! O que você tá rodando?'],
@@ -1675,6 +1679,7 @@ export const LINES = {
     },
     // на твоём другом экране, следом за тобой
     screens: { hello: ['Привет, другой экран.', 'Теперь работаешь тут? Иду.', 'Вот ты где.'] },
+    update: ['Вышла моя новая версия: {version}. Она в настройках, когда захочешь.', 'Доступна версия {version}. Не к спеху.'],
     // она реагирует на твой ПК (pc.js): процессор, батарея, сеть, флешка, игра
     pc: {
       hot: ['Твой процессор на пределе. Я тоже нагреваюсь.', 'Процессор на {cpu} %. Жарко тут.', 'Горячо! Что там у тебя запущено?'],

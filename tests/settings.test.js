@@ -208,10 +208,14 @@ test('closed: gone for good, the next open makes a new one; update only reaches 
 test('the settings page reaches main only through its own preload', () => {
   const root = path.join(__dirname, '..');
   const preload = fs.readFileSync(path.join(root, 'src/settings-preload.js'), 'utf8');
-  const channels = [...preload.matchAll(/ipcRenderer\.\w+\('([^']+)'/g)].map((m) => m[1]);
+  const channels = [...preload.matchAll(/ipcRenderer\.(?:invoke|send)\('([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(channels)].sort(), [
     'settings:close', 'settings:key', 'settings:menu', 'settings:ready', 'settings:reset', 'settings:restart', 'settings:set', 'settings:view',
+    'updates:check', 'updates:download', 'updates:install', 'updates:page',
   ]);
+  // and what main sends it
+  const heard = [...preload.matchAll(/ipcRenderer\.on\('([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(heard)].sort(), ['settings:section', 'settings:view', 'updates:status']);
   const html = fs.readFileSync(path.join(root, 'src/renderer/settings.html'), 'utf8');
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /script-src 'self'/);
