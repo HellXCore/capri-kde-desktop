@@ -20,6 +20,7 @@ function el(tag, className, text) {
 }
 
 function select(id, { focus = false } = {}) {
+  const changed = id !== current;
   current = id;
   for (const tab of tabs.children) {
     const on = tab.dataset.id === id;
@@ -28,7 +29,7 @@ function select(id, { focus = false } = {}) {
     if (on && focus) tab.focus();
   }
   for (const panel of panels.children) panel.hidden = panel.dataset.id !== id;
-  panels.scrollTop = 0;
+  if (changed) panels.scrollTop = 0;
 }
 
 function section(s) {
@@ -43,6 +44,7 @@ function section(s) {
     const note = el('div', 'settings__note');
     const menu = el('button', 'settings__button', view.openMenu);
     menu.type = 'button';
+    menu.id = `menu-${s.id}`;
     menu.addEventListener('click', () => host.openMenu());
     note.append(el('p', 'settings__noteText', view.readOnly), menu);
     panel.append(note);
@@ -65,7 +67,10 @@ function render(next) {
   title.textContent = view.title;
   tabs.setAttribute('aria-label', view.nav);
   closeButton.textContent = view.close;
-  const hadFocus = tabs.contains(document.activeElement);
+  // drawn again (the config changed, often from her menu opened here): the focus stays on the same
+  // control, not dropped to the page, and the open section stays scrolled where it was
+  const focused = document.activeElement?.id;
+  const scroll = panels.scrollTop;
   tabs.replaceChildren(...view.sections.map((s) => {
     const tab = el('button', 'settings__tab', s.title);
     tab.type = 'button';
@@ -78,7 +83,11 @@ function render(next) {
   }));
   panels.replaceChildren(...view.sections.map(section));
   const ids = view.sections.map((s) => s.id);
-  select(ids.includes(current) ? current : ids[0], { focus: hadFocus });
+  const same = ids.includes(current);
+  select(same ? current : ids[0]);
+  if (same) panels.scrollTop = scroll;
+  const again = focused && document.getElementById(focused);
+  if (again && !again.closest('[hidden]')) again.focus();
 }
 
 tabs.addEventListener('keydown', (e) => {

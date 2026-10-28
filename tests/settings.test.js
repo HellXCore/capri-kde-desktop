@@ -219,3 +219,13 @@ test('the settings page reaches main only through its own preload', () => {
     assert.match(main.slice(at, at + 160), /settings\?\.owns\(e\.sender\)/, channel);
   }
 });
+
+test('update while the page is already gone (closing, quitting): nothing sent, no throw', () => {
+  const { settings } = makeSettings();
+  const win = settings.open();
+  win.webContents.isDestroyed = () => true;
+  win.webContents.send = () => { throw new Error('Object has been destroyed'); };
+  assert.doesNotThrow(() => settings.update());
+  assert.equal(settings.isOpen(), false);
+  assert.equal(settings.owns(win.webContents), false);
+});
