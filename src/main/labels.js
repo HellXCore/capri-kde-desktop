@@ -26,6 +26,7 @@ const TRAY = {
     lookNow: 'Regarde mon écran', lookAuto: 'Regarder mon écran de temps en temps',
     pcReact: 'Réagir à mon PC',
     cloudFree: 'gratuit, en ligne', cloudSignin: 'Me connecter à Ollama (modèles cloud gratuits)…',
+    unavailable: 'indisponible sur ce système',
   },
   en: {
     name: 'English',
@@ -49,6 +50,7 @@ const TRAY = {
     lookNow: 'Look at my screen', lookAuto: 'Look at my screen now and then',
     pcReact: 'React to my PC',
     cloudFree: 'free, online', cloudSignin: 'Sign in to Ollama (free cloud models)…',
+    unavailable: 'not available on this system',
   },
   es: {
     name: 'Español',
@@ -71,6 +73,7 @@ const TRAY = {
     lookNow: 'Mira mi pantalla', lookAuto: 'Mirar mi pantalla de vez en cuando',
     pcReact: 'Reaccionar a mi PC',
     cloudFree: 'gratis, en línea', cloudSignin: 'Conectarme a Ollama (modelos en la nube gratis)…',
+    unavailable: 'no disponible en este sistema',
   },
   pt: {
     name: 'Português (Brasil)',
@@ -93,6 +96,7 @@ const TRAY = {
     lookNow: 'Olha minha tela', lookAuto: 'Olhar minha tela de vez em quando',
     pcReact: 'Reagir ao meu PC',
     cloudFree: 'grátis, online', cloudSignin: 'Entrar no Ollama (modelos na nuvem grátis)…',
+    unavailable: 'indisponível neste sistema',
   },
   ru: {
     name: 'Русский',
@@ -116,6 +120,7 @@ const TRAY = {
     lookNow: 'Посмотри на мой экран', lookAuto: 'Иногда смотреть на мой экран',
     pcReact: 'Реагировать на мой ПК',
     cloudFree: 'бесплатно, онлайн', cloudSignin: 'Войти в Ollama (бесплатные облачные модели)…',
+    unavailable: 'недоступно в этой системе',
   },
 };
 
