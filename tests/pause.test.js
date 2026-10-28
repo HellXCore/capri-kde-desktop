@@ -228,7 +228,7 @@ test('pause: each part hears of it once per change, with the time paused', async
   assert.deepEqual(heard, ['pause', 42000]);
 });
 
-test('pause: what is kept for later goes by Panel priorities, the newer one on a tie', async () => {
+test('pause: what is kept for later goes by Panel priorities, the newer one on a tie (a prompt put out by a prompt only)', async () => {
   const { keepFor } = await load('pause.js');
   const P = { info: 1, idle: 1, work: 2, done: 3, error: 3, report: 3, chat: 3, alert: 4, remind: 4 };
   const done1 = { kind: 'done', line: 'one' };
@@ -243,6 +243,45 @@ test('pause: what is kept for later goes by Panel priorities, the newer one on a
   kept = keepFor(kept, alert, P);
   kept = keepFor(kept, { kind: 'error' }, P);
   assert.equal(kept, alert);
+  // a reminder, as high, doesn't put a permission prompt out (Claude waits on it); a newer prompt does
+  kept = keepFor(kept, { kind: 'remind' }, P);
+  assert.equal(kept, alert);
+  const alert2 = { kind: 'alert' };
+  assert.equal(keepFor(kept, alert2, P), alert2);
+});
+
+test('panel: a reminder kept while paused and put out by a prompt is told it was never seen', async (t) => {
+  const { panel } = await makePanel(t);
+  const left = [];
+  panel.pause();
+  panel.say({ kind: 'remind', line: 'tea', hold: null, onLeave: (how) => left.push(how) });
+  assert.equal(panel.say({ kind: 'alert', line: 'may I?', hold: null }), true);
+  assert.deepEqual(left, [{ unseen: true }]);
+  assert.equal(panel.say({ kind: 'remind', line: 'call', hold: null }), false, 'the prompt stays kept');
+  panel.unpause(1000);
+  assert.equal(panel.current.kind, 'alert');
+});
+
+test('power: a resume that never comes is made up for by the unlock (you are at it: it is awake)', () => {
+  const power = fakePower();
+  const timers = fakeTimers();
+  const watch = watchPower({ power, platform: 'win32', later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  power.emit('lock-screen');
+  power.idle = 'locked';
+  power.emit('suspend'); // Modern Standby: no resume after it
+  power.idle = 'active';
+  power.emit('unlock-screen');
+  assert.equal(watch.away, false);
+  assert.deepEqual(watch.state().why, []);
+  assert.equal(timers.intervals, 0);
+  // and back from another user (macOS)
+  const mac = watchPower({ power: fakePower(), platform: 'darwin', later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  mac.emit('user-did-resign-active');
+  mac.emit('suspend');
+  mac.emit('user-did-become-active');
+  assert.equal(mac.away, false);
+  watch.stop();
+  mac.stop();
 });
 
 // ---------- renderer: her panel ----------

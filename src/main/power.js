@@ -68,6 +68,9 @@ function watchPower({
     const [flag, on] = EVENTS[event] || [];
     if (!flag) return;
     flags[flag] = on;
+    // unlocked or back from another user: you're at it, so the computer is awake, even if its
+    // resume never came (Modern Standby can drop it): a lost resume mustn't freeze her for good
+    if (event === 'unlock-screen' || event === 'user-did-become-active') flags.asleep = false;
     update(event);
     if (event === 'resume' && lockAware) check('resume');
   };

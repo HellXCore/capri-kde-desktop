@@ -71,12 +71,14 @@ export class Pause {
 // The message to keep for when you're back, of the one kept so far and a new one: Panel.say()'s
 // priorities, the newer one on a tie (as on screen, where the newer one replaces the older). Only
 // what matters is kept (priority >= KEEP): her optional lines and progress lines are dropped, so
-// they don't all come at once when you're back.
+// they don't all come at once when you're back. A permission prompt kept is only replaced by a
+// newer one: Claude is stuck until you answer it, and a reminder (as high) comes again by itself.
 export const KEEP = 3;
 export function keepFor(kept, msg, priority) {
   const p = priority[msg?.kind] ?? 0;
   if (p < KEEP) return kept;
   if (kept && (priority[kept.kind] ?? 0) > p) return kept;
+  if (kept?.kind === 'alert' && msg.kind !== 'alert') return kept;
   return msg;
 }
 

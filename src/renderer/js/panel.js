@@ -115,7 +115,7 @@ export class Panel {
     if (this.paused) {
       const kept = keepFor(this.kept, msg, PRIORITY);
       if (kept === this.kept) return false;
-      this.kept?.onLeave?.();
+      this.kept?.onLeave?.({ unseen: true }); // replaced before it ever went up
       this.kept = kept;
       return true;
     }
