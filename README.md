@@ -3,20 +3,18 @@
 This is a fork of [Libes6/capri-desktop](https://github.com) specifically patched for my setup **CachyOS** running **KDE Plasma 6.8**.
 
 ### Key changes in this fork:
-* Fixed transparent window click-through and layout behavior under **XWayland**.
-* Optimized performance for Plasma 6.8 Wayland sessions.
+* Fixed window transparent, click-through and layout behavior under **XWayland**.
+* Optimized performance and compatibility with Plasma 6.8 Wayland sessions.
 
 ## Fork builds and releases
 
-- Windows x64: `npm run dist:win` → EXE installer.
-- Linux x64: `npm run dist:linux` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported in 0.1.0 because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
-- macOS Apple Silicon: `npm run dist:mac` → ARM64 DMG and ZIP. Spaces/fullscreen overlay visibility and menu-bar icon sizing are configured for macOS. Screen capture requires permission in System Settings.
+- Linux x64: `npm run dist:linux` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported yet because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
 
 Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
 
-Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain Windows-only in 0.1.0. On macOS (Apple Silicon) a small bundled Swift helper reports window geometry and the window in front without any permission (no Screen Recording, no Accessibility), so she tracks windows, sits on them and rides along; window titles, AI/game detection and the other Windows-only features stay unavailable there, see [docs/MAC_WINDOW_TRACKING.md](docs/MAC_WINDOW_TRACKING.md). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation. Linux uses 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there; Windows/macOS retain event-driven tracking. Native GUI acceptance on every desktop environment is still required.
-
-**English**
+Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain [Windows-only](https://github.com/mochiiwuff/capri-desktop). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are currently disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation.
+Linux employs 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there on native Wayland.
+On XWayland interaction is handled by dynamically modifying the window's geometry (shape clipping) at the level of the Linux window manager. Rather than simply ignoring mouse events in software, an array of interactive regions—a mask—is explicitly applied to the overlay. Areas not included in this array effectively cease to exist for the X11/XWayland input subsystem, causing mouse clicks to pass straight through them.
 
 # Capri
 
@@ -280,42 +278,21 @@ own. You can choose another one in her menu.
 
 ## Install
 
-### Quick start (Windows, no coding)
+### Quick start (Linux, no coding)
 
-1. Download **`Capri-Setup-x.y.z.exe`** from the [latest release](https://github.com/mochiiwuff/capri-desktop/releases/latest)
-   and run it. It installs for your user only (no admin rights), adds a desktop shortcut and starts Capri.
-   You don't need Node.js or anything else.
-2. The installer isn't signed (a code-signing certificate costs money), so Windows SmartScreen may say
-   "Windows protected your PC": click **More info**, then **Run anyway**.
-3. Capri shows up and introduces herself. Click **Plug me in**: that connects her to Claude Code.
-4. Close Claude Code completely and open it again (it reads its hooks when a session starts). As soon as Claude does
-   something, she tells you **"I can see Claude!"**: that's how you know it worked.
+Prebuilt binaries
+grab the latest AppImage from the [Releases page](https://github.com/HellXCore/capri-kde-desktop/releases).
 
-Her menu: **right-click her**. It's also on her tray icon, which Windows 11 often hides behind the **^** next to the clock.
-
-### What's Claude Code? Do I need it?
-
-[Claude Code](https://code.claude.com/docs/en/quickstart) is Anthropic's coding assistant: in a terminal, in VS Code,
-or in the Code tab of the Claude app. It needs a paid Claude plan (Pro or higher) or an API account. Capri only watches
-it: no API key, and nothing to pay for Capri herself.
-
-Without Claude Code she still lives on your desktop: she floats, sits on your windows, looks at the satellite, falls
-asleep. You can just leave her there.
-
-### From the source (macOS, Linux, developers)
+### From the source (Linux, developers)
 
 You need [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
-git clone https://github.com/mochiiwuff/capri-desktop.git
+git clone https://github.com/HellXCore/capri-kde-desktop.git
 cd capri-desktop
 npm install
 npm start
 ```
-
-Keep that terminal open while she runs. Not tested on macOS or Linux yet: she should start, but the window tricks
-(sitting on your windows, possessing them, showing Claude's answer when you're elsewhere) are Windows-only, and on Linux
-the transparent overlay works best on X11 (Wayland can struggle with click-through windows).
 
 ### Hook her up to Claude Code by hand
 
@@ -389,13 +366,11 @@ named like this (`.mp3`, `.wav`, `.ogg` or `.m4a`):
 - All of the code is right here. The installer is built from it with `npm run dist`; you can build your own.
 - Nothing leaves your PC (see below): she only talks to Claude Code through a hook on `127.0.0.1`.
 - What she changes on your system: the hook in `~/.claude/settings.json` (a backup is written first, and you can remove
-  it from her menu), and a startup entry only if you tick "Start with Windows". She uninstalls like any app, from
-  Windows Settings › Apps.
-- The SmartScreen warning comes from the installer not being signed, not from anything it does.
+  it from her menu), and a startup entry only if you tick "Start with Windows". She uninstalls like any AppImage
 
 ## FAQ
 
-- **Mac, Linux?** No installer yet, but you can run her from the source (see above).
+- **windows, Mac?** No installer here(see above).
 - **Phone, Android?** No, she needs a desktop.
 - **Other assistants?** Claude Code, Codex and Antigravity: her menu › **Watch**. Cursor, Windsurf and Gemini CLI: not yet.
 - **Ollama?** Two ways. Claude Code running on a local model through Ollama (`ollama launch claude`): she sees it like
@@ -525,6 +500,10 @@ can click an item of it).
 `npm run dist` builds the Windows installer in `dist/`.
 
 ## Credits and rights
+
+* Original Creator: [mochiiwoffy](https://github.com/mochiiwuff/capri-desktop) — author of the original Windows version.
+* Cross-platform Adaptor: [Libes6](https://github.com/Libes6/capri-desktop) — developer of the multiplatform fork.
+* The Muse & Construct: Capri — for breaking into our desktops, glitching under XWayland, the heap of errors under Wayland, and keeping us company while Claude Code does the heavy lifting.
 
 Capri / Project Capricorn, Cyberpunk and Cyberpunk: Edgerunners belong to CD PROJEKT RED, Studio Trigger and Netflix.
 This is a non-commercial fan project with no affiliation. The character images in `assets/capri/` come from frames of
