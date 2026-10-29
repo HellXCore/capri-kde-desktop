@@ -501,8 +501,8 @@ can click an item of it).
 
 ## Credits and rights
 
-* Original Creator: [mochiiwoffy](https://github.com/mochiiwuff/capri-desktop) — author of the original Windows version.
-* Cross-platform Adaptor: [Libes6](https://github.com/Libes6/capri-desktop) — developer of the multiplatform fork.
+* Original Creator: [mochiiwoffy](https://github.com/mochiiwuff/) — author of the original [Windows version](https://github.com/mochiiwuff/capri-desktop).
+* Cross-platform Adaptor: [Libes6](https://github.com/Libes6/) — developer of the m[ultiplatform fork](https://github.com/Libes6/capri-desktop).
 * The Muse & Construct: Capri — for breaking into our desktops, glitching under XWayland, the heap of errors under Wayland, and keeping us company while Claude Code does the heavy lifting.
 
 Capri / Project Capricorn, Cyberpunk and Cyberpunk: Edgerunners belong to CD PROJEKT RED, Studio Trigger and Netflix.
