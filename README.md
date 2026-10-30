@@ -1,10 +1,75 @@
-# Capri KDE Desktop (CachyOS & Plasma 6.8 Fork)
+# PROJECT_CAPRICORN_KDE_Desktop // SYSTEM_STATUS
 
+> `STATUS: ACTIVE`  
+> `ENCRYPTION: QUANTUM_READY`  
+> `LOCATION: NIGHT_CITY_NET`
+
+---
+
+> `OVERRIDE`
 This is a fork of [Libes6/capri-desktop](https://github.com) specifically patched for my setup **CachyOS** running **KDE Plasma 6.8**.
 
 ### Key changes in this fork:
-* Fixed window transparent, click-through and layout behavior under **XWayland**.
-* Optimized performance and compatibility with Plasma 6.8 Wayland sessions.
+* Running with high compatibility under **XWayland**.
+* operation with maximum functionality with Plasma 6.8 Wayland and XWayland sessions.
+
+### Other version:
+* Original [windows](https://github.com/mochiiwuff/capri-desktop)
+* Fork [multiplatform](https://github.com/Libes6/capri-desktop)
+
+---
+
+## 📊 SYSTEM_LOAD // PROGRESS_BAR
+
+**CORE_COMPILATION_PROGRESS:**
+![Cyberpunk Progress](https://progress-bar.dev/64/?scale=100&title=SYNCING&width=600&color=00ff66)
+
+```
+[ PROTOCOL: INITIALIZED ]
+[ PROGRESS: 64% // SYSTEM_STABLE ]
+[ ████████████████░░░░░░░░░ ] 
+```
+
+---
+
+## 🛠️ FUNCTION_MATRIX // ROADMAP
+
+| MODULE_ID | STATUS_INDICATOR | SUBSYSTEM // FUNCTION |
+| :--- | :---: | :--- |
+| **`[ COMPLETED ]`** | 🟪 | `[NET_CONTROL_HOOKS]` // Managing an application's interactive zone via a mask |
+| **`[ COMPLETED ]`** | 🟪 | `[CORP_SPY_MODULE]` // Tracking the position of desktop windows |
+| **`[ IN_PROGRESS ]`** | 🟦 | `[DATA_HEIST_UI]` // Tracking the mouse cursor position |
+| **`[ IN_PROGRESS ]`** | 🟦 | `[PROTOCOL_XWAYLAND_UI]` // Full XWayland support |
+| **`[ BACKLOG ]`** | 🟥 | `[PROTOCOL_WAYLAND_UI]` // Native Wayland support |
+| **`[ DEPRECATED ]`** | ⬛ | `[MULTI_PLATFORM_API]` // Multi-platform support |
+
+---
+
+## 💾 RECON_DATA // SUBSYSTEM_DETAILS
+
+### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
+- [x] `[CORE-01]` -UNKNOWN_ERROR-
+- [x] `[UI-02]` -UNKNOWN_ERROR-
+- [x] `[DB-01]` -UNKNOWN_ERROR-
+
+### 🟦 В ПРОЦЕССЕ // COMPILING
+- [/] `[NET-04]` -UNKNOWN_ERROR-
+- [ ] `[SEC-02]` -UNKNOWN_ERROR-
+
+### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
+- [ ] `[AI-01]` -UNKNOWN_ERROR-
+- [ ] `[CROSS-01]` -UNKNOWN_ERROR-
+
+### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
+- [ ] `[LEGACY-99]` -UNKNOWN_ERROR-
+- [ ] `[CORP-05]` -UNKNOWN_ERROR-
+
+---
+
+```
+[ EOF // КОНЕЦ ПАКЕТА ДАННЫХ ]
+[ SYSTEM_VERSION: v0.2.2-alpha ]
+```
 
 ## Fork builds and releases
 
@@ -12,7 +77,7 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 
 Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
 
-Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain [Windows-only](https://github.com/mochiiwuff/capri-desktop). Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are currently disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation.
+Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain [Windows-only]. Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are currently disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation.
 Linux employs 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there on native Wayland.
 On XWayland interaction is handled by dynamically modifying the window's geometry (shape clipping) at the level of the Linux window manager. Rather than simply ignoring mouse events in software, an array of interactive regions—a mask—is explicitly applied to the overlay. Areas not included in this array effectively cease to exist for the X11/XWayland input subsystem, causing mouse clicks to pass straight through them.
 
