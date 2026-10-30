@@ -2,7 +2,9 @@
 
 // Feeds the overlay with the position of the other windows, so Capri can sit on them. On Windows a
 // small PowerShell helper does the Win32 calls; on Linux X11 linux/x11-watch.js reads the window
-// manager (EWMH) through xprop/xwininfo. Either gives physical pixels, which we turn into the
+// manager (EWMH) through xprop/xwininfo; in a KDE Wayland session (Capri itself in XWayland) a KWin
+// script reports every window, native Wayland ones too (linux/kwin-bridge.js). Either gives physical
+// pixels (KWin: its logical ones, the same while XWayland is scaled by KWin), which we turn into the
 // overlay's coordinates. On macOS mac/window-watch.js runs a small Swift helper whose points already
 // are Electron's screen coordinates. The Windows helper also says when the window in front is another AI (ChatGPT,
 // Gemini…: `ai`, the names it matched), for her jealousy, and never passes on a title; which game
@@ -12,7 +14,7 @@
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawn } = require('node:child_process');
-const { screen } = require('electron');
+const { screen, app } = require('electron');
 
 // in the installed app it sits next to the app archive (asarUnpack), where PowerShell can read it
 const SCRIPT = path.join(__dirname, 'windows.ps1').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
@@ -50,12 +52,31 @@ function createFeed({ overlay, onUpdate, toDip }) {
   };
 }
 
-// Linux: X11 only (`session` from capabilities.linuxSession(); never just because it is Linux).
+// Linux (`session` from capabilities.linuxSession(); never just because it is Linux): an X11 session
+// is read through the window manager; a KDE Wayland session through a KWin script. Other Wayland
+// desktops stay off (startX11Watch says so): they have nothing that lists every window.
 function startLinuxWatch({ overlay, onUpdate, onState, session }) {
   // required by its full path, so the module loads the same however this file was loaded
   const { startX11Watch } = require(path.join(__dirname, 'linux', 'x11-watch.js'));
   const x11 = require(path.join(__dirname, 'linux', 'x11.js'));
   const feed = createFeed({ overlay, onUpdate, toDip: (win) => x11.pxToDip(win, screen.getAllDisplays()) });
+
+  if (session !== 'x11' && /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || '')) {
+    const { startKWinWatch } = require(path.join(__dirname, 'linux', 'kwin-bridge.js'));
+    // KWin leaves the overlay out of its list by pid and title, so the title is fixed
+    const TITLE = 'capri-overlay';
+    overlay.setTitle(TITLE);
+    overlay.on('page-title-updated', (event) => event.preventDefault());
+    const watch = startKWinWatch({
+      session,
+      scriptDir: path.join(app.getPath('userData'), 'kwin'),
+      getSelf: () => ({ pid: process.pid, title: TITLE }),
+      onSnapshot: feed.push,
+      onState,
+    });
+    return { stop: watch.stop, refresh: feed.send };
+  }
+
   const watch = startX11Watch({
     session,
     self: { id: x11.selfXid(overlay.getNativeWindowHandle()) },
