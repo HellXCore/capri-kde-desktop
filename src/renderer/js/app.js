@@ -103,6 +103,14 @@ async function boot() {
   // Sync interactive window areas on Linux (XWayland)
   let shapeRaf = 0;
   let isDraggingShape = false;
+  let lastShape = '';
+  const sendShape = (rects) => {
+    const dpr = window.devicePixelRatio || 1;
+    const key = `${dpr}|${JSON.stringify(rects)}`;
+    if (key === lastShape) return; // nothing changed: no IPC, no X request
+    lastShape = key;
+    host.setShape(rects, dpr);
+  };
 
   const updateShapes = () => {
     shapeRaf = 0;
@@ -111,7 +119,7 @@ async function boot() {
     if (capri.dragging) {
       if (!isDraggingShape) {
         isDraggingShape = true;
-        host.setShape([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]);
+        sendShape([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]);
       }
       return;
     }
@@ -139,7 +147,7 @@ async function boot() {
       rects.push({ x: mask.x, y: mask.y, width: mask.w, height: mask.h });
     }
 
-    host.setShape(rects.length ? rects : [{ x: -100, y: -100, width: 1, height: 1 }]);
+    sendShape(rects);
   };
 
   const scheduleUpdateShapes = () => {
@@ -646,6 +654,7 @@ async function boot() {
       dpr = window.devicePixelRatio;
       capri.setScale(capri.scale); // her drawing redone at the new screen's pixels
     }
+    scheduleUpdateShapes();
   };
   host.onResize(applySize);
 
