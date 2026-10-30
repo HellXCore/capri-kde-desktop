@@ -1,9 +1,3 @@
-// A consistent X11 backend is needed for global cursor coordinates and transparent overlays.
-if (process.platform === 'linux') {
-  const { app } = require('electron');
-  app.commandLine.appendSwitch('ozone-platform', 'x11');
-}
-
 'use strict';
 
 const path = require('node:path');
@@ -22,6 +16,7 @@ const lang = require('./lang');
 const { createBridge } = require('./bridge');
 const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { watchPower } = require('./power');
+const { createInputRegion } = require('./linux/x11-input');
 const { createCapabilities } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
@@ -59,6 +54,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let overlay = null;
+let inputRegion = null; // X11 input shape (null: not available, old setShape fallback)
 let tray = null;
 let trayMenu = null; // also what she opens when you right-click her
 let settings = null; // her settings window (settings-window.js), made in main()
@@ -167,6 +163,7 @@ function fitOverlay() {
   if (!overlay) return;
   const { area, gap } = overlayArea();
   overlay.setBounds(area);
+  inputRegion?.reapply();
   overlay.webContents.send('overlay:resize', { width: area.width, height: area.height, gap });
 }
 
@@ -230,9 +227,11 @@ function createOverlay() {
   if (process.platform !== 'linux') {
     overlay.setIgnoreMouseEvents(true, { forward: true });
   } else {
-    // On Linux, we immediately set an invisible region before the first render,
-    // so that the window doesn't intercept clicks across the entire screen
-    overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]);
+    // Linux (X11/XWayland): the window is drawn in full, only the input shape is limited.
+    // Empty before the first render, so the window doesn't intercept clicks across the screen.
+    inputRegion = createInputRegion(overlay);
+    if (inputRegion) inputRegion.set([], 1);
+    else overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]); // fallback:
   }
   overlay.loadURL('capri://app/src/renderer/index.html');
   // always shown: put away, she's still there as her biochip in the corner. Sized again first:
@@ -240,6 +239,7 @@ function createOverlay() {
   overlay.once('ready-to-show', () => {
     fitOverlay();
     overlay.showInactive();
+    inputRegion?.reapply(); // once mapped
   });
   overlay.webContents.on('render-process-gone', (_e, details) => {
     console.error('[capri] renderer gone:', details.reason);
@@ -899,25 +899,25 @@ function registerIpc() {
       overlay?.setIgnoreMouseEvents(!on, { forward: true });
     }
   });
-  ipcMain.on('overlay:shape', (_e, rects) => {
-    if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
-    if (!rects || rects.length === 0) {
-      // On Linux, setShape([]) crops the window to 0 pixels (an Electron bug).
-      // To reset the mask to cover the entire screen, we set the window to its full size:
-      const b = overlay.getBounds();
-      overlay.setShape([{ x: 0, y: 0, width: b.width, height: b.height }]);
-    } else {
-      const valid = rects
-      .map((r) => ({
-        x: Math.round(r.x),
-        y: Math.round(r.y),
-        width: Math.max(1, Math.round(r.width)),
-        height: Math.max(1, Math.round(r.height)),
-      }))
-      .filter((r) => r.width > 0 && r.height > 0);
-      overlay.setShape(valid.length > 0 ? valid : [{ x: -100, y: -100, width: 1, height: 1 }]);
-    }
-  });
+  ipcMain.on('overlay:shape', (_e, payload) => {
+  if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
+  const { rects, dpr } = payload || {};
+  const list = Array.isArray(rects) ? rects : [];
+  if (inputRegion) {
+    inputRegion.set(list, dpr);
+    return;
+  }
+  // fallback without koffi/libXext: Electron's bounding shape (it clips drawing as well)
+  const valid = list
+    .map((r) => ({
+      x: Math.round(r.x),
+      y: Math.round(r.y),
+      width: Math.max(1, Math.round(r.width)),
+      height: Math.max(1, Math.round(r.height)),
+    }))
+    .filter((r) => r.width > 0 && r.height > 0);
+  overlay.setShape(valid.length ? valid : [{ x: -100, y: -100, width: 1, height: 1 }]);
+});
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
     const p = screen.getCursorScreenPoint();
