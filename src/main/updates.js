@@ -14,10 +14,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const OWNER = 'Libes6';
+const OWNER = 'HellXCore';
 const REPO = 'capri-desktop';
 const RELEASES = `https://github.com/${OWNER}/${REPO}/releases`;
-const TAG_PREFIX = 'fork-v';
+const TAG_PREFIX = 'main';
 const STARTUP_DELAY = 45 * 1000;
 // the local test feed (scripts/updater-smoke.js): only a build made by it, with this mark in its package.json
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+\/?$/;

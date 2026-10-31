@@ -1,9 +1,10 @@
 {
   "name": "capri-desktop",
   "version": "0.2.1",
+  "desktopName": "com.arasaka.capricorn",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
-  "repository": "github:Libes6/capri-desktop",
+  "repository": "github:HellXCore/capri-desktop",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
@@ -154,7 +155,7 @@
       ],
       "category": "Game",
       "icon": "assets/icons/capri.png",
-      "maintainer": "Libes6 <Libes6@users.noreply.github.com>",
+      "maintainer": "HellXCore <HellXCore@users.noreply.github.com>",
       "desktop": {
         "entry": {
           "StartupWMClass": "capri-desktop"
