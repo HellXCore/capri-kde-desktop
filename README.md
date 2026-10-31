@@ -36,12 +36,12 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 
 | MODULE_ID | STATUS_INDICATOR | SUBSYSTEM // FUNCTION |
 | :--- | :---: | :--- |
-| **`[ COMPLETED ]`** | 🟪 | `[NET_CONTROL_HOOKS]` // Managing an application's interactive zone via a mask |
-| **`[ COMPLETED ]`** | 🟪 | `[CORP_SPY_MODULE]` // Tracking the position of desktop windows |
-| **`[ IN_PROGRESS ]`** | 🟦 | `[DATA_HEIST_UI]` // Tracking the mouse cursor position |
-| **`[ IN_PROGRESS ]`** | 🟦 | `[PROTOCOL_XWAYLAND_UI]` // Full XWayland support |
+| **`[ COMPLETED ]`** | 🟪 | `[NET_CONTROL_HOOKS]` // Interction @user with Capri |
+| **`[IN_PROGRESS]`** | 🟦 | `[CORP_SPY_MODULE]` // Interction Capri with desktop |
+| **`[IN_PROGRESS]`** | 🟦 | `[PROTOCOL_XWAYLAND_UI]` // Full XWayland support |
 | **`[ BACKLOG ]`** | 🟥 | `[PROTOCOL_WAYLAND_UI]` // Native Wayland support |
-| **`[ DEPRECATED ]`** | ⬛ | `[MULTI_PLATFORM_API]` // Multi-platform support |
+| **`[DEPRECATED]`** | ⬛ | `[LINUX_OLD_API]` // Native X11 support |
+| **`[DEPRECATED]`** | ⬛ | `[MULTI_PLATFORM_API]` // Multi-platform support |
 
 ---
 
@@ -49,19 +49,42 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 
 ### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
 - [x] `[CORE-01]` -UNKNOWN_ERROR-
-- [x] `[UI-02]` -UNKNOWN_ERROR-
+- [x] `[UI-01]` -Greating, splashscreen-
+- [x] `[UI-02]` -Basic overlay animation-
+- [x] `[UI-03]` -Drag/click/throwing interaction-
+- [x] `[UI-05]` -Window tracking, sitting on other windows-
 - [x] `[DB-01]` -UNKNOWN_ERROR-
 
 ### 🟦 В ПРОЦЕССЕ // COMPILING
-- [/] `[NET-04]` -UNKNOWN_ERROR-
-- [ ] `[SEC-02]` -UNKNOWN_ERROR-
+- [/] `[UI-03]` -Sleping mask, waiting-
+- [/] `[UI-04]` -Summon, jump to cursor-
+- [/] `[NET-01]` -UNKNOWN_ERROR-
+- [/] `[NET-02]` -Assistant hooks-
+- [/] `[NET-02]` -Chat with an already installed Ollama or API provider-
+- [/] `[SCR-01]` -User detecting, tracking activity-
+- [/] `[SCR-02]` -Tracking the mouse position, possess cursor with the eyes-
+- [/] `[SCR-03]` -Following the mouse position-
+- [/] `[SCR-04]` -Screenshot-
+- [/] `[SCR-04]` -Feel desktop load-
+- [/] `[SCR-05]` -Game detecting-
+- [/] `[SEC-06]` -foreground-app detection, installed-app discovery/closing and media keys remain-
+- [/] `[INP-02]` -CTRL+ALT+C-
 
 ### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
-- [ ] `[AI-01]` -UNKNOWN_ERROR-
+- [ ] `[BOOT-01]` -Linux login startup-
+- [ ] `[SEC-05]` -Secure password(API_KEYS) store throw kwallet-
+- [ ] `[FILES-01]` -File search-
+- [ ] `[FILES-05]` -Opening folders-
+- [ ] `[UI-04]` -CAPRI_AGY_HOOK-
+- [ ] `[AI-01]` -Claude co-work-
+- [ ] `[AI-02]` -UNKNOWN_ERROR-
+- [ ] `[AI-03]` -Reminders-
 - [ ] `[CROSS-01]` -UNKNOWN_ERROR-
 
 ### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
-- [ ] `[LEGACY-99]` -UNKNOWN_ERROR-
+- [ ] `[LEGACY-67]` -WINDOWS_ENVIRONMENT-
+- [ ] `[LEGACY-89]` -LINUX_X11_ENVIRONMENT-
+- [ ] `[CORP-02]` -MACOS_ENVIRONMENT-
 - [ ] `[CORP-05]` -UNKNOWN_ERROR-
 
 ---
@@ -77,10 +100,6 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 
 Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
 
-Window tracking, sitting on other windows, possession, foreground-app detection, installed-app discovery/closing and media keys remain [Windows-only]. Experimental: on a Linux X11 session (not XWayland or native Wayland) with `xprop`/`xwininfo` installed (`x11-utils`, a dependency of the .deb), she tracks windows and sits on them; this is not yet verified on a real desktop, see [docs/LINUX_WINDOW_TRACKING.md](docs/LINUX_WINDOW_TRACKING.md). Unsupported window options and Linux login startup are currently disabled. Basic overlay animation, drag/click interaction, assistant hooks, chat with an already installed Ollama or API provider, reminders, file search and opening folders use the shared implementation.
-Linux employs 50 ms cursor polling for hit testing because Electron does not forward ignored mouse moves there on native Wayland.
-On XWayland interaction is handled by dynamically modifying the window's geometry (shape clipping) at the level of the Linux window manager. Rather than simply ignoring mouse events in software, an array of interactive regions—a mask—is explicitly applied to the overlay. Areas not included in this array effectively cease to exist for the X11/XWayland input subsystem, causing mouse clicks to pass straight through them.
-
 # Capri
 
 Capri, the *Project Capricorn* construct from Cyberpunk: Edgerunners season 2, lives on your desktop
@@ -91,7 +110,15 @@ glitches, comments on every action, comes to find you when it needs your permiss
 
 ![Teleport, frame by frame](docs/teleport.png)
 
-## What she does
+## What she does..should be able to do...
+
+```
+[ PROTOCOL: INITIALIZED ]
+[ SELFTESTING.. ]
+[ -UNKNOWN_ERROR- ]
+[ PROGRESS: 32% // SYSTEM_STABLE ]
+[ ██████░░░░░░░░░░░░░░░ ] 
+```
 
 - **When she starts**: she grabs your screen. Its edges crackle red, her left hand slams onto its edge, then her
   right, her arms reach in along them as she hauls herself up, and her face hits the glass (a white flash, an ink
@@ -179,9 +206,6 @@ glitches, comments on every action, comes to find you when it needs your permiss
 ![Possessing a window: the dive, the hit, the window full of eyes](docs/possess.png)
 
 ![Asleep down to her mask, waking up, and put away bottom left](docs/sleep.png)
-
-Window tracking is Windows-only for now (a tiny PowerShell helper reads window positions, never their contents; the title of the one in front is only used to spot another AI, see "She gets attached", and its program's folder to tell a game; the USB sticks plugged in are seen by their drive letter, other devices by the name Windows gives them).
-On macOS and Linux she still floats, peeks, falls and wanders.
 
 ### She shows you around
 
