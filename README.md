@@ -24,13 +24,11 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 **CORE_COMPILATION_PROGRESS:**
 ![Cyberpunk Progress](https://progress-bar.dev/64/?scale=100&title=SYNCING&width=600&color=00ff66)
 
-```
 [ PROTOCOL: INITIALIZED ]
 [ PROGRESS: 64% // SYSTEM_STABLE ]
 <div style="width: 100%; background-color: #1a1a24; border: 1px solid #00ff66; padding: 2px; border-radius: 3px; box-shadow: 0 0 10px #00ff66;">
   <div style="width: 21%; background: linear-gradient(90deg, #ff0055 0%, #00ff66 100%); height: 12px; border-radius: 2px;"></div>
-</div> 
-```
+</div>
 
 ---
 
@@ -114,7 +112,6 @@ glitches, comments on every action, comes to find you when it needs your permiss
 
 ## What she does..should be able to do...
 
-```
 [ PROTOCOL: INITIALIZED ]
 [ SELFTESTING.. ]
 [ -UNKNOWN_ERROR- ]
@@ -122,7 +119,6 @@ glitches, comments on every action, comes to find you when it needs your permiss
 <div style="width: 100%; background-color: #1a1a24; border: 1px solid #00ff66; padding: 2px; border-radius: 3px; box-shadow: 0 0 10px #00ff66;">
   <div style="width: 21%; background: linear-gradient(90deg, #ff0055 0%, #00ff66 100%); height: 12px; border-radius: 2px;"></div>
 </div> 
-```
 
 - **When she starts**: she grabs your screen. Its edges crackle red, her left hand slams onto its edge, then her
   right, her arms reach in along them as she hauls herself up, and her face hits the glass (a white flash, an ink
