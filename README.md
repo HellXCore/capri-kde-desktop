@@ -27,7 +27,9 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 ```
 [ PROTOCOL: INITIALIZED ]
 [ PROGRESS: 64% // SYSTEM_STABLE ]
-[ ████████████████░░░░░░░░░ ] 
+<div style="width: 100%; background-color: #1a1a24; border: 1px solid #00ff66; padding: 2px; border-radius: 3px; box-shadow: 0 0 10px #00ff66;">
+  <div style="width: 21%; background: linear-gradient(90deg, #ff0055 0%, #00ff66 100%); height: 12px; border-radius: 2px;"></div>
+</div> 
 ```
 
 ---
@@ -48,44 +50,44 @@ This is a fork of [Libes6/capri-desktop](https://github.com) specifically patche
 ## 💾 RECON_DATA // SUBSYSTEM_DETAILS
 
 ### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
-- [x] `[CORE-01]` -UNKNOWN_ERROR-
-- [x] `[UI-01]` -Greating, splashscreen-
-- [x] `[UI-02]` -Basic overlay animation-
-- [x] `[UI-03]` -Drag/click/throwing interaction-
-- [x] `[UI-05]` -Window tracking, sitting on other windows-
-- [x] `[DB-01]` -UNKNOWN_ERROR-
+- [x] `[CORE-01]` UNKNOWN_ERROR
+- [x] `[UI-01]` Greating, splashscreen
+- [x] `[UI-02]` Basic overlay animation
+- [x] `[UI-03]` Drag/click/throwing interaction
+- [x] `[UI-05]` Window tracking, sitting on other windows
+- [x] `[DB-01]` UNKNOWN_ERROR
 
 ### 🟦 В ПРОЦЕССЕ // COMPILING
-- [/] `[UI-03]` -Sleping mask, waiting-
-- [/] `[UI-04]` -Summon, jump to cursor-
-- [/] `[NET-01]` -UNKNOWN_ERROR-
-- [/] `[NET-02]` -Assistant hooks-
-- [/] `[NET-02]` -Chat with an already installed Ollama or API provider-
-- [/] `[SCR-01]` -User detecting, tracking activity-
-- [/] `[SCR-02]` -Tracking the mouse position, possess cursor with the eyes-
-- [/] `[SCR-03]` -Following the mouse position-
-- [/] `[SCR-04]` -Screenshot-
-- [/] `[SCR-04]` -Feel desktop load-
-- [/] `[SCR-05]` -Game detecting-
-- [/] `[SEC-06]` -foreground-app detection, installed-app discovery/closing and media keys remain-
-- [/] `[INP-02]` -CTRL+ALT+C-
+- [ ] `[UI-03]` Sleping mask, waiting
+- [ ] `[UI-04]` Summon, jump to cursor
+- [ ] `[NET-01]` UNKNOWN_ERROR
+- [ ] `[NET-02]` Assistant hooks
+- [ ] `[NET-02]` Chat with an already installed Ollama or API provider
+- [ ] `[SCR-01]` User detecting, tracking activity
+- [ ] `[SCR-02]` Tracking the mouse position, possess cursor with the eyes
+- [ ] `[SCR-03]` Following the mouse position
+- [ ] `[SCR-04]` Screenshot
+- [ ] `[SCR-04]` Feel desktop load
+- [ ] `[SCR-05]` Game detecting
+- [ ] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
+- [ ] `[INP-02]` CTRL+ALT+C
 
 ### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
-- [ ] `[BOOT-01]` -Linux login startup-
-- [ ] `[SEC-05]` -Secure password(API_KEYS) store throw kwallet-
-- [ ] `[FILES-01]` -File search-
-- [ ] `[FILES-05]` -Opening folders-
-- [ ] `[UI-04]` -CAPRI_AGY_HOOK-
-- [ ] `[AI-01]` -Claude co-work-
-- [ ] `[AI-02]` -UNKNOWN_ERROR-
-- [ ] `[AI-03]` -Reminders-
-- [ ] `[CROSS-01]` -UNKNOWN_ERROR-
+- [ ] `[BOOT-01]` Linux login startup
+- [ ] `[SEC-05]` Secure password(API_KEYS) store throw kwallet
+- [ ] `[FILES-01]` File search
+- [ ] `[FILES-05]` Opening folders
+- [ ] `[UI-04]` CAPRI_AGY_HOOK
+- [ ] `[AI-01]` Claude co-work
+- [ ] `[AI-02]` UNKNOWN_ERROR
+- [ ] `[AI-03]` Reminders
+- [ ] `[CROSS-01]` UNKNOWN_ERROR
 
 ### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
-- [ ] `[LEGACY-67]` -WINDOWS_ENVIRONMENT-
-- [ ] `[LEGACY-89]` -LINUX_X11_ENVIRONMENT-
-- [ ] `[CORP-02]` -MACOS_ENVIRONMENT-
-- [ ] `[CORP-05]` -UNKNOWN_ERROR-
+- [ ] `[LEGACY-67]` WINDOWS_ENVIRONMENT
+- [ ] `[LEGACY-89]` LINUX_X11_ENVIRONMENT
+- [ ] `[CORP-02]` MACOS_ENVIRONMENT
+- [ ] `[CORP-05]` UNKNOWN_ERROR
 
 ---
 
@@ -116,8 +118,10 @@ glitches, comments on every action, comes to find you when it needs your permiss
 [ PROTOCOL: INITIALIZED ]
 [ SELFTESTING.. ]
 [ -UNKNOWN_ERROR- ]
-[ PROGRESS: 32% // SYSTEM_STABLE ]
-[ ██████░░░░░░░░░░░░░░░ ] 
+[ PROGRESS: 21% // SYSTEM_STABLE ]
+<div style="width: 100%; background-color: #1a1a24; border: 1px solid #00ff66; padding: 2px; border-radius: 3px; box-shadow: 0 0 10px #00ff66;">
+  <div style="width: 21%; background: linear-gradient(90deg, #ff0055 0%, #00ff66 100%); height: 12px; border-radius: 2px;"></div>
+</div> 
 ```
 
 - **When she starts**: she grabs your screen. Its edges crackle red, her left hand slams onto its edge, then her
