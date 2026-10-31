@@ -13,6 +13,7 @@ const { randomUUID } = require('node:crypto');
 const config = require('./config');
 const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
+const OVERLAY_TITLE = 'capri-overlay';
 const { createBridge } = require('./bridge');
 const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
 const { watchPower } = require('./power');
@@ -219,7 +220,8 @@ function createOverlay() {
       autoplayPolicy: 'no-user-gesture-required',
     },
   });
-
+  
+  overlay.on('page-title-updated', (e) => e.preventDefault());
   overlay.setAlwaysOnTop(true, 'screen-saver');
   if (process.platform === 'darwin') {
     overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
