@@ -37,11 +37,11 @@
 
 | MODULE_ID | STATUS_INDICATOR | SUBSYSTEM // FUNCTION |
 | :--- | :---: | :--- |
+| **`[ COMPLATED ]`** | 🟪 | `[LINUX_OLD_API]` // Native X11 support* |
 | **`[ COMPLETED ]`** | 🟪 | `[NET_CONTROL_HOOKS]` // Interction @user with Capri |
 | **`[IN_PROGRESS]`** | 🟦 | `[CORP_SPY_MODULE]` // Interction Capri with desktop |
 | **`[IN_PROGRESS]`** | 🟦 | `[PROTOCOL_XWAYLAND_UI]` // Full XWayland support |
 | **`[ BACKLOG ]`** | 🟥 | `[PROTOCOL_WAYLAND_UI]` // Native Wayland support |
-| **`[DEPRECATED]`** | ⬛ | `[LINUX_OLD_API]` // Native X11 support |
 | **`[DEPRECATED]`** | ⬛ | `[MULTI_PLATFORM_API]` // Multi-platform support |
 
 ---
@@ -50,6 +50,7 @@
 
 ### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
 - [x] `[CORE-01]` UNKNOWN_ERROR
+- [х] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
 - [x] `[UI-01]` Greating, splashscreen
 - [x] `[UI-02]` Basic overlay animation
 - [x] `[UI-03]` Drag/click/throwing interaction
@@ -84,7 +85,6 @@
 
 ### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
 - [ ] `[LEGACY-67]` WINDOWS_ENVIRONMENT
-- [ ] `[LEGACY-89]` LINUX_X11_ENVIRONMENT
 - [ ] `[CORP-02]` MACOS_ENVIRONMENT
 - [ ] `[CORP-05]` UNKNOWN_ERROR
 
