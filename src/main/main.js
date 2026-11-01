@@ -29,6 +29,7 @@ const setup = require('./setup');
 const apps = require('./apps');
 const launch = require('./launch');
 const files = require('./files');
+const linuxShot = process.platform === 'linux' ? require('./linux/screenshot') : null; // Spectacle from KWin
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
@@ -808,6 +809,12 @@ async function chatWithFallback(cfg, messages, send, signal, streamed) {
 // for her AI to look at, never written anywhere. 1280 px wide at most: enough to read, light to send.
 const snaps = new Map(); // id -> the picture, base64 JPEG
 async function snapScreen() {
+  // Linux: under XWayland desktopCapturer sees only the X windows; Spectacle asks KWin for all of it
+  const shot = linuxShot && await linuxShot.grab({ multi: displays().length > 1 });
+  if (shot) {
+    const { width } = shot.getSize();
+    return (width > 1280 ? shot.resize({ width: 1280 }) : shot).toJPEG(72).toString('base64');
+  }
   const d = targetDisplay();
   const k = d.scaleFactor || 1;
   const fit = Math.min(1, 1280 / (d.bounds.width * k));
