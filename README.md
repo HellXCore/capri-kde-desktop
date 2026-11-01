@@ -97,7 +97,7 @@
 
 ## Fork builds and releases
 
-- Linux x64: `npm run dist:linux` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported yet because global cursor tracking is required. GNOME may require an AppIndicator extension for the tray.
+- Linux x64: `npm run dist` → AppImage and DEB. Requires XWayland; native Wayland is not supported yet because global cursor tracking is required.
 
 Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
 

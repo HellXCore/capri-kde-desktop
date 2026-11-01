@@ -1,6 +1,6 @@
 {
   "name": "capri-desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "desktopName": "com.arasaka.capricorn",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
@@ -8,11 +8,8 @@
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
-    "prestart": "node scripts/build-mac-helper.js",
     "start": "electron .",
-    "predev": "node scripts/build-mac-helper.js",
     "dev": "electron . --dev",
-    "build:mac-helper": "node scripts/build-mac-helper.js --required",
     "demo": "node scripts/demo.js",
     "hooks:install": "node scripts/install-hooks.js",
     "hooks:uninstall": "node scripts/install-hooks.js --uninstall",
@@ -21,15 +18,11 @@
     "hooks:agy:install": "node scripts/install-hooks-agy.js",
     "hooks:agy:uninstall": "node scripts/install-hooks-agy.js --uninstall",
     "check:llm": "node scripts/check-llm.js",
-    "test:hooks": "node --test tests/hooks.test.js",
-    "dist": "electron-builder --publish never",
     "test": "node --test tests/*.test.js",
+    "test:hooks": "node --test tests/hooks.test.js",
     "test:smoke": "node scripts/smoke-test.js",
     "updater:smoke": "node scripts/updater-smoke.js",
-    "dist:win": "electron-builder --win --x64 --publish never",
-    "dist:linux": "electron-builder --linux --x64 --publish never",
-    "dist:mac": "electron-builder --mac --arm64 --publish never",
-    "verify:mac": "node scripts/verify-mac-artifacts.js"
+    "dist": "electron-builder --linux AppImage deb --x64 --publish never"
   },
   "keywords": [
     "claude-code",
@@ -61,7 +54,7 @@
     "xml2js": "^0.5.0"
   },
   "build": {
-    "appId": "capri.desktop",
+    "appId": "com.arasaka.capricorn",
     "productName": "Capri",
     "files": [
       "src/**",
@@ -69,75 +62,20 @@
       "hooks/**",
       "scripts/**",
       "package.json",
-      "LICENSE",
-      "!src/main/mac/*.swift",
-      "!src/main/mac/bin/**",
-      "!scripts/before-pack.js",
-      "!scripts/build-mac-helper.js",
-      "!scripts/updater-smoke.js",
-      "!scripts/after-sign.js",
-      "!scripts/verify-mac-signature.js",
-      "!scripts/verify-mac-artifacts.js"
+      "LICENSE"
     ],
     "asarUnpack": [
-      "hooks/**",
-      "src/main/windows.ps1"
+      "hooks/**"
     ],
-    "beforePack": "scripts/before-pack.js",
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icons/capri.ico"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "runAfterFinish": true,
-      "createDesktopShortcut": true,
-      "shortcutName": "Capri"
-    },
     "artifactName": "Capri-${version}-${os}-${arch}.${ext}",
     "publish": [
       {
         "provider": "github",
-        "owner": "Libes6",
+        "owner": "HellXCore",
         "repo": "capri-desktop",
         "releaseType": "release"
       }
     ],
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64"
-          ]
-        }
-      ],
-      "category": "public.app-category.entertainment",
-      "icon": "assets/icons/capri-mac.png",
-      "extraResources": [
-        {
-          "from": "src/main/mac/bin/capri-windows",
-          "to": "bin/capri-windows"
-        }
-      ],
-      "hardenedRuntime": true,
-      "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Capri captures your screen only when you request screen analysis or a screenshot."
-      },
-      "identity": "-",
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "binaries": [
-        "Contents/Resources/bin/capri-windows"
-      ]
-    },
     "linux": {
       "target": [
         {
@@ -155,7 +93,7 @@
       ],
       "category": "Game",
       "icon": "assets/icons/capri.png",
-      "maintainer": "HellXCore <HellXCore@users.noreply.github.com>",
+      "maintainer": "HellXCore <github.com/HellXCore>",
       "desktop": {
         "entry": {
           "StartupWMClass": "capri-desktop"

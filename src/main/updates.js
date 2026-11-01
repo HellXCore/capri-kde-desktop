@@ -17,7 +17,7 @@ const path = require('node:path');
 const OWNER = 'HellXCore';
 const REPO = 'capri-desktop';
 const RELEASES = `https://github.com/${OWNER}/${REPO}/releases`;
-const TAG_PREFIX = 'main';
+const TAG_PREFIX = 'v';
 const STARTUP_DELAY = 45 * 1000;
 // the local test feed (scripts/updater-smoke.js): only a build made by it, with this mark in its package.json
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+\/?$/;

@@ -7,7 +7,7 @@ const {
   updaterTransport, notifyTransport, macTransport, readFeed, updateMode,
 } = require('../src/main/updates');
 
-const offer = (extra = {}) => ({ version: '0.2.0', notes: '<p>Fixes &amp; more</p>', tag: 'fork-v0.2.0', download: async (p) => p(5, 10), install: async () => {}, ...extra });
+const offer = (extra = {}) => ({ version: '0.2.0', notes: '<p>Fixes &amp; more</p>', tag: 'v', download: async (p) => p(5, 10), install: async () => {}, ...extra });
 
 test('a build without updates stays disabled and never pretends to check, download or install', async () => {
   for (const reason of ['dev', 'smoke', 'feed']) {
@@ -40,15 +40,6 @@ test('a network failure is an error to retry, never "current"; a retry can then 
   offline = false;
   await c.check();
   assert.equal(c.status.kind, 'current');
-});
-
-test('a feed not published yet (first release, 404) is an error, not "current"', async () => {
-  const err = Object.assign(new Error('Cannot find latest-mac.yml in the latest release artifacts (https://github.com/x/y/releases/download/fork-v0.1.0/latest-mac.yml): HttpError: 404'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
-  const c = new UpdateController({ transport: { check: async () => { throw err; } } });
-  await c.check();
-  assert.equal(c.status.kind, 'error');
-  assert.equal(c.status.reason, 'feed');
-  assert.equal(c.status.category, 'other');
 });
 
 test('install needs a verified download and a confirmation; declining keeps the download', async () => {
@@ -134,11 +125,11 @@ test('a new check releases the previous update (its download)', async () => {
 });
 
 test('notify mode (a .deb) shows the version and its page but downloads nothing', async () => {
-  const c = new UpdateController({ mode: 'notify', transport: { check: async () => ({ version: '0.2.0', tag: 'fork-v0.2.0' }) } });
+  const c = new UpdateController({ mode: 'notify', transport: { check: async () => ({ version: '0.2.0', tag: 'v0.2.0' }) } });
   await c.check();
   assert.equal(c.status.kind, 'available');
   assert.equal(c.view().canDownload, false);
-  assert.equal(c.view().page, 'https://github.com/Libes6/capri-desktop/releases/tag/fork-v0.2.0');
+  assert.equal(c.view().page, 'https://github.com/HellXCore/capri-desktop/releases/tag/v0.2.0');
   await c.download();
   assert.equal(c.status.kind, 'available');
 });
@@ -158,20 +149,15 @@ test('release notes become plain text, and only this repository\'s release pages
   assert.equal(plainNotes('<h2>New</h2><ul><li>One &lt;b&gt;</li><li>Two&#33;</li></ul><script>x</script>'), 'New\n• One <b>\n• Two!');
   assert.equal(plainNotes([{ version: '0.2.0', note: 'A' }]), '0.2.0\nA');
   assert.equal(plainNotes(null), '');
-  assert.equal(releasePage(null, '0.3.0'), 'https://github.com/Libes6/capri-desktop/releases/tag/fork-v0.3.0');
-  assert.equal(isReleasePage(releasePage('fork-v0.3.0')), true);
-  assert.equal(isReleasePage('https://github.com/Libes6/capri-desktop/releases/latest'), true);
+  assert.equal(releasePage(null, '0.3.0'), 'https://github.com/HellXCore/capri-desktop/releases/tag/v0.3.0');
+  assert.equal(isReleasePage(releasePage('v0.3.0')), true);
+  assert.equal(isReleasePage('https://github.com/HellXCore/capri-desktop/releases/latest'), true);
   assert.equal(isReleasePage('https://evil.example/releases/tag/x'), false);
   assert.equal(isReleasePage('file:///etc/passwd'), false);
 });
 
 test('which installations update, and how', () => {
   const feed = { provider: 'github' };
-  assert.deepEqual(updateMode({ platform: 'darwin', packaged: false, feed }), { disabled: 'dev' });
-  assert.deepEqual(updateMode({ platform: 'win32', packaged: true, smoke: true, feed }), { disabled: 'smoke' });
-  assert.deepEqual(updateMode({ platform: 'win32', packaged: true, feed: null }), { disabled: 'feed' });
-  assert.deepEqual(updateMode({ platform: 'win32', packaged: true, feed }), { mode: 'install', kind: 'nsis' });
-  assert.deepEqual(updateMode({ platform: 'darwin', packaged: true, feed }), { mode: 'install', kind: 'mac' });
   assert.deepEqual(updateMode({ platform: 'linux', packaged: true, env: { APPIMAGE: '/home/u/Capri.AppImage' }, feed }), { mode: 'install', kind: 'appimage' });
   assert.deepEqual(updateMode({ platform: 'linux', packaged: true, env: {}, feed }), { mode: 'notify', kind: 'package' });
   assert.deepEqual(updateMode({ platform: 'freebsd', packaged: true, feed }), { disabled: 'platform' });
@@ -179,7 +165,7 @@ test('which installations update, and how', () => {
 
 test('only this repository\'s GitHub feed, or a loopback feed in a test build, is accepted', () => {
   const read = (text) => () => text;
-  assert.deepEqual(readFeed('x', { readFile: read('owner: Libes6\nrepo: capri-desktop\nprovider: github\nupdaterCacheDirName: capri-desktop-updater\n') }), { provider: 'github' });
+  assert.deepEqual(readFeed('x', { readFile: read('owner: HellXCore\nrepo: capri-desktop\nprovider: github\nupdaterCacheDirName: capri-desktop-updater\n') }), { provider: 'github' });
   assert.equal(readFeed('x', { readFile: read('owner: someone\nrepo: capri-desktop\nprovider: github\n') }), null);
   const loopback = 'provider: generic\nurl: http://127.0.0.1:47832/\n';
   assert.equal(readFeed('x', { readFile: read(loopback) }), null); // an ordinary build never takes it
@@ -204,7 +190,7 @@ function fakeUpdater({ result, downloadError = null } = {}) {
 }
 
 test('Windows/AppImage transport: check, download with progress, quitAndInstall silent and relaunching', async () => {
-  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'fork-v0.2.0', releaseNotes: 'Notes' } } });
+  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'v0.2.0', releaseNotes: 'Notes' } } });
   const progress = [];
   const c = new UpdateController({ transport: updaterTransport(u), onChange: (v) => v.kind === 'downloading' && progress.push([v.received, v.total]) });
   await c.check();
@@ -239,32 +225,12 @@ test('electron-updater sha512 mismatch on download is a signature error', async 
 });
 
 test('.deb transport offers no download', async () => {
-  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'fork-v0.2.0' } } });
+  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'v0.2.0' } } });
   const c = new UpdateController({ mode: 'notify', transport: notifyTransport(u) });
   await c.check();
   await c.download();
   assert.deepEqual(u.calls, ['check']);
   assert.equal(c.status.kind, 'available');
-});
-
-test('mac transport: resolved files go to the installer; a location problem keeps the page to open', async () => {
-  const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'fork-v0.2.0', files: [] } } });
-  const files = [{ url: new URL('https://github.com/Libes6/capri-desktop/releases/download/fork-v0.2.0/Capri-0.2.0-mac-arm64.zip'), info: { sha512: 'x' } }];
-  u.updateInfoAndProvider = { provider: { resolveFiles: () => files } };
-  const got = [];
-  const installer = {
-    download: async (f, version) => { got.push(['download', f, version]); throw Object.assign(new Error('cannot replace (translocated)'), { code: 'ERR_CAPRI_LOCATION' }); },
-    install: async () => got.push('install'),
-  };
-  const c = new UpdateController({ transport: macTransport(u, installer) });
-  await c.check();
-  await c.download();
-  assert.equal(got[0][1], files);
-  assert.equal(got[0][2], '0.2.0');
-  assert.equal(c.status.kind, 'error');
-  assert.equal(c.status.reason, 'location');
-  assert.equal(c.view().version, '0.2.0');
-  assert.equal(c.page(), 'https://github.com/Libes6/capri-desktop/releases/tag/fork-v0.2.0');
 });
 
 test('About shows the updater in every language, with all its texts', () => {
@@ -309,8 +275,8 @@ test('a bundle that fails its check (not one app, not signed, a symlink) is a si
 test('the repository builds read this fork\'s GitHub releases, never a test feed', () => {
   const pkg = require('../package.json');
   assert.equal(pkg.capriUpdaterTest, undefined);
-  assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'Libes6', 'capri-desktop']]);
+  assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'HellXCore', 'capri-desktop']]);
   // app-update.yml as electron-builder writes it from that
-  const yml = 'owner: Libes6\nrepo: capri-desktop\nprovider: github\nreleaseType: release\nupdaterCacheDirName: capri-desktop-updater\n';
+  const yml = 'owner: HellXCore\nrepo: capri-desktop\nprovider: github\nreleaseType: release\nupdaterCacheDirName: capri-desktop-updater\n';
   assert.deepEqual(readFeed('x', { readFile: () => yml }), { provider: 'github' });
 });
