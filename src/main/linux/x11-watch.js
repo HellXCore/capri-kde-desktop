@@ -12,7 +12,7 @@
 const { execFile } = require('node:child_process');
 const x11 = require('./x11');
 
-const INTERVAL = 500;     // ms between polls
+const INTERVAL = 250;     // ms between polls
 const FULL_EVERY = 4000;  // ms: every window's properties read again (state changes without a move)
 const GIVE_UP = 5;        // failed polls in a row before giving up
 
