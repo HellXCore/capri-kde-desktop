@@ -3,7 +3,7 @@
 // What Capri can really do on this computer, in one place: the menu, her guide, her setup and her
 // chat ask this instead of guessing from the OS name. The base is what is implemented here (and
 // whether its helper is in place); a native adapter that starts or fails later (window tracking on
-// macOS or X11, CAPRI-08/09/10) reports it with set(), and whoever listens hears of the change.
+// X11, XWayland or Wayland, CAPRI-08/09/10) reports it with set(), and whoever listens hears of the change.
 
 const fs = require('node:fs');
 
@@ -20,20 +20,20 @@ const FEATURES = [
   'ollamaLaunch',   // Claude Code or Codex through Ollama, in a terminal window of its own
 ];
 
-// The display session on Linux: Capri runs as an X11 client (ozone x11), natively or through
-// XWayland. Native Wayland windows are out of reach of X11 calls, which matters to window tracking.
+// Capri runs on Linux as an X11 client (ozone x11), natively or through XWayland (partial functionality).
+// Native Wayland windows are out of reach of X11 calls, which necessitates the use of an external adapter.
 function linuxSession(env = {}) {
   const wayland = env.XDG_SESSION_TYPE === 'wayland' || Boolean(env.WAYLAND_DISPLAY);
   if (wayland) return env.DISPLAY ? 'xwayland' : 'wayland';
   return env.DISPLAY || env.XDG_SESSION_TYPE === 'x11' ? 'x11' : null;
 }
 
-// What this build implements on `platform`: nothing system-dependent at the start. Window tracking
-// is switched on by its watcher (windows.js) once it runs.
+// What this build implements on `platform`: nothing system-dependent at the start. 
+// Window tracking is switched on by its watcher (windows.js) once it runs.
 function detect({ platform = process.platform, env = process.env } = {}) {
   return {
     platform,
-    session: platform === 'linux' ? linuxSession(env) : null,
+    session: linuxSession(env),
     features: Object.fromEntries(FEATURES.map((name) => [name, false])),
   };
 }
