@@ -28,30 +28,13 @@ function linuxSession(env = {}) {
   return env.DISPLAY || env.XDG_SESSION_TYPE === 'x11' ? 'x11' : null;
 }
 
-// What this build implements on `platform`. `helpers.windowWatch`: the window watcher's helper
-// script, which must be shipped for it to run.
-function detect({ platform = process.platform, env = process.env, helpers = {}, exists = fs.existsSync } = {}) {
-  const win = platform === 'win32';
-  const has = (file) => {
-    try {
-      return Boolean(file) && exists(file);
-    } catch {
-      return false;
-    }
-  };
+// What this build implements on `platform`: nothing system-dependent at the start. Window tracking
+// is switched on by its watcher (windows.js) once it runs.
+function detect({ platform = process.platform, env = process.env } = {}) {
   return {
     platform,
     session: platform === 'linux' ? linuxSession(env) : null,
-    features: {
-      windowTracking: win && has(helpers.windowWatch),
-      appList: win,
-      appClose: win,
-      appLaunch: win,
-      mediaKeys: win,
-      autostart: win || platform === 'darwin', // Electron's login items; not on Linux yet
-      ollamaInstall: win,
-      ollamaLaunch: win,
-    },
+    features: Object.fromEntries(FEATURES.map((name) => [name, false])),
   };
 }
 

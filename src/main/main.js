@@ -15,7 +15,7 @@ const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
 const OVERLAY_TITLE = 'capri-overlay';
 const { createBridge } = require('./bridge');
-const { startWindowWatch, SCRIPT: WINDOW_HELPER } = require('./windows');
+const { startWindowWatch } = require('./windows');
 const { watchPower } = require('./power');
 const { createInputRegion } = require('./linux/x11-input');
 const { createCapabilities } = require('./capabilities');
@@ -34,7 +34,7 @@ const activeAssistant = () => assistant(config.load().assistant); // Claude Code
 const activeHooks = () => activeAssistant().hooks;
 const demoSteps = require('../../scripts/demo-sequence');
 // what works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
-const caps = createCapabilities({ helpers: { windowWatch: WINDOW_HELPER } });
+const caps = createCapabilities();
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
@@ -209,7 +209,7 @@ function createOverlay() {
     focusable: false,
     hasShadow: false,
     alwaysOnTop: true,
-    type: process.platform === 'win32' ? 'toolbar' : undefined,
+    type: undefined,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
@@ -223,9 +223,6 @@ function createOverlay() {
   
   overlay.on('page-title-updated', (e) => e.preventDefault());
   overlay.setAlwaysOnTop(true, 'screen-saver');
-  if (process.platform === 'darwin') {
-    overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  }
   if (process.platform !== 'linux') {
     overlay.setIgnoreMouseEvents(true, { forward: true });
   } else {
@@ -296,10 +293,6 @@ const DEMO_TERMINAL = `<body style="margin:0;background:#14101c;color:#8f8aa3;fo
 <div>&nbsp;&nbsp;GET /gigs</div><div style="color:#36ff7a">&nbsp;&nbsp;&nbsp;&nbsp;✓ returns 20 items per page</div>
 <div style="color:#36ff7a">&nbsp;&nbsp;&nbsp;&nbsp;✓ paginates with a cursor</div><div style="color:#36ff7a">&nbsp;&nbsp;&nbsp;&nbsp;✓ rejects a bad cursor</div>
 <div>&nbsp;&nbsp;6 passing (212ms)</div><div style="color:#36ff7a">PS C:\\night-city-api&gt; _</div></body>`;
-
-// Her demo and --dev test windows stay on top, except on macOS: a window above the normal level is
-// not one the helper reports as a perch (mac/window-watch.js), and showInactive() brings it up anyway.
-const PERCH_ON_TOP = process.platform !== 'darwin';
 
 function demoWindow(open) {
   demoWin?.destroy();
@@ -879,7 +872,7 @@ async function pickClaudeFolder() {
 
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icons', 'tray.png'));
-  tray = new Tray(process.platform === 'darwin' ? icon.resize({ width: 22, height: 22 }) : icon);
+  tray = new Tray(icon);
   tray.setToolTip('Capri');
   tray.on('click', () => sendCommand('status'));
   rebuildTray();
@@ -1436,12 +1429,9 @@ function main() {
     return;
   }
   app.on('second-instance', () => sendCommand('status'));
-  if (process.platform === 'win32') app.setAppUserModelId('capri.desktop');
 
   app.whenReady().then(() => {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
-    if (process.platform === 'darwin') app.dock?.hide();
-    if (process.platform === 'darwin') Menu.setApplicationMenu(appMenu());
     else if (!DEV) Menu.setApplicationMenu(null);
     serveProtocol();
     registerIpc();
@@ -1451,8 +1441,6 @@ function main() {
       url: 'capri://app/src/renderer/settings.html',
       view: () => settingsView(settingsFacts()),
       area: () => targetDisplay().workArea,
-      // no Dock icon on macOS: the app has to come forward for its window to get the keyboard
-      focusApp: () => process.platform === 'darwin' && app.focus({ steal: true }),
     });
     updates = startUpdates({ app, smoke: SMOKE, onChange: updatesChanged });
     createOverlay();
@@ -1461,7 +1449,7 @@ function main() {
     caps.onChange(() => updateConfig({}));
     windowWatch = startWindowWatch({
       overlay,
-      session: caps.session, // Linux: X11 only, never XWayland or native Wayland
+      session: caps.session, // Linux: X11, XWayland throw kwin qml script
       onState: (ok) => caps.set('windowTracking', ok),
       onUpdate: (data) => {
         // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
