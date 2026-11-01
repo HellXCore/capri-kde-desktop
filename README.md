@@ -55,6 +55,7 @@
 - [x] `[UI-02]` Basic overlay animation
 - [x] `[UI-03]` Drag/click/throwing interaction
 - [x] `[UI-05]` Window tracking, sitting on other windows
+- [x] `[SCR-04]` Capri is watching your desktop (Implement linux screenshot tools)
 - [x] `[DB-01]` UNKNOWN_ERROR
 
 ### 🟦 В ПРОЦЕССЕ // COMPILING
@@ -66,7 +67,6 @@
 - [ ] `[SCR-01]` User detecting, tracking activity
 - [ ] `[SCR-02]` Tracking the mouse position, possess cursor with the eyes
 - [ ] `[SCR-03]` Following the mouse position
-- [ ] `[SCR-04]` Screenshot
 - [ ] `[SCR-04]` Feel desktop load
 - [ ] `[SCR-05]` Game detecting
 - [ ] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
