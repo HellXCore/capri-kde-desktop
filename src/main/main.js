@@ -757,7 +757,7 @@ function refreshCloud(force = false) {
   return cloudCheck;
 }
 
-// A model fetched with Ollama (a cloud one is only a small file), then her chat on it.
+// A model fetched with Ollaat Session.<anonymous> (node:electron/js2c/browser_init:1:119048)
 async function fetchModel(name, onProgress, signal) {
   await setup.pullModel(name, onProgress, signal);
   updateConfig({ provider: 'ollama' });
