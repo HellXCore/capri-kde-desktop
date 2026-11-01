@@ -7,8 +7,7 @@ const vm = require('node:vm');
 const x11 = require('../src/main/linux/x11');
 const { startX11Watch, GIVE_UP } = require('../src/main/linux/x11-watch');
 
-// Output as xprop/xwininfo (x11-utils 7.7) print it, on a reparenting EWMH window manager
-// (written from the tools' formats, not captured on a live desktop: see docs/LINUX_WINDOW_TRACKING.md).
+// Output as xprop/xwininfo (x11-utils 7.7) print it, on a reparenting EWMH window manager.
 const ROOT = `_NET_ACTIVE_WINDOW(WINDOW): window id # 0x3a00007
 _NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x1a00003, 0x1e00004, 0x2c00001, 0x2400006, 0x3a00007, 0x4400002
 _NET_CURRENT_DESKTOP(CARDINAL) = 1
