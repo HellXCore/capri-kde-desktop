@@ -22,7 +22,7 @@ const STARTUP_DELAY = 45 * 1000;
 // the local test feed (scripts/updater-smoke.js): only a build made by it, with this mark in its package.json
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+\/?$/;
 
-// the release page of a tag (fork-vX.Y.Z), or of a version
+// the release page of a tag (vX.Y.Z), or of a version
 function releasePage(tag, version) {
   const name = tag || (version ? `${TAG_PREFIX}${version}` : null);
   return name ? `${RELEASES}/tag/${encodeURIComponent(name)}` : `${RELEASES}/latest`;
@@ -197,7 +197,7 @@ async function checkWith(updater) {
   return { info, version: info.version, notes: info.releaseNotes, tag: info.tag || null };
 }
 
-// Windows NSIS and the AppImage: electron-updater downloads (sha512 from latest*.yml) and installs.
+// AppImage: electron-updater downloads (sha512 from latest*.yml) and installs.
 function updaterTransport(updater) {
   return {
     async check() {
@@ -245,28 +245,6 @@ function notifyTransport(updater) {
   };
 }
 
-// macOS: electron-updater's check (it resolves the files of latest-mac.yml), then mac-update.js
-// downloads the zip, verifies it and swaps the bundle.
-function macTransport(updater, installer) {
-  return {
-    async check() {
-      const found = await checkWith(updater);
-      if (!found) return null;
-      // electron-updater 6.6.x keeps the provider of the last check here; it gives absolute URLs
-      const provider = updater.updateInfoAndProvider?.provider;
-      const files = provider ? provider.resolveFiles(found.info) : [];
-      return {
-        version: found.version,
-        notes: found.notes,
-        tag: found.tag,
-        download: (progress) => installer.download(files, found.version, progress),
-        install: () => installer.install(found.version),
-        close: () => installer.discard(),
-      };
-    },
-  };
-}
-
 // --- Where updates can work -------------------------------------------------------------------
 
 // The feed the build was made with (resources/app-update.yml, written by electron-builder from
@@ -287,14 +265,12 @@ function readFeed(file, { testBuild = false, readFile = fs.readFileSync } = {}) 
 
 /**
  * How this installation updates.
- * → { disabled: reason } | { mode: 'install', kind: 'nsis' | 'appimage' | 'mac' } | { mode: 'notify', kind: 'package' }
+ * → { disabled: reason } | { mode: 'install', kind: 'appimage' } | { mode: 'notify', kind: 'package' }
  */
 function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
   if (smoke) return { disabled: 'smoke' };
   if (!packaged) return { disabled: 'dev' };
   if (!feed) return { disabled: 'feed' };
-  if (platform === 'win32') return { mode: 'install', kind: 'nsis' };
-  if (platform === 'darwin') return { mode: 'install', kind: 'mac' };
   if (platform === 'linux') return env.APPIMAGE ? { mode: 'install', kind: 'appimage' } : { mode: 'notify', kind: 'package' };
   return { disabled: 'platform' };
 }
@@ -302,7 +278,7 @@ function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
 // --- Electron wiring (main.js) ----------------------------------------------------------------
 
 /**
- * Starts the updater of the running app. deps: app, smoke, onChange(view), log, macInstaller (tests)
+ * Starts the updater of the running app. deps: app, smoke, onChange(view), log.
  * Returns the controller, plus page() and the startup check scheduled.
  */
 function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) => console.log(`[capri] update: ${line}`) }) {
@@ -324,20 +300,7 @@ function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) =>
   autoUpdater.logger = { info: () => {}, debug: () => {}, warn: (msg) => log(`warn: ${redact(msg?.message ?? msg)}`), error: () => {} };
   autoUpdater.on('error', () => {}); // failures are the controller's to report (an unheard 'error' would throw)
   let transport;
-  if (mode.kind === 'mac') {
-    const mac = require('./mac-update');
-    mac.cleanup({ exePath: app.getPath('exe'), tmpDir: app.getPath('temp') });
-    const { CancellationToken } = require('electron-updater');
-    transport = macTransport(autoUpdater, mac.createMacInstaller({
-      exePath: app.getPath('exe'),
-      tmpDir: app.getPath('temp'),
-      download: (url, dest, opts) => autoUpdater.httpExecutor.download(new URL(url), dest, { ...opts, cancellationToken: new CancellationToken() }),
-      relaunch: () => {
-        app.relaunch();
-        app.quit();
-      },
-    }));
-  } else if (mode.mode === 'notify') {
+  if (mode.mode === 'notify') {
     transport = notifyTransport(autoUpdater);
   } else {
     transport = updaterTransport(autoUpdater);
@@ -366,7 +329,6 @@ module.exports = {
   isReleasePage,
   updaterTransport,
   notifyTransport,
-  macTransport,
   readFeed,
   updateMode,
   startUpdates,

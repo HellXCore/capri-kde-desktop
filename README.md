@@ -50,7 +50,7 @@
 
 ### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
 - [x] `[CORE-01]` UNKNOWN_ERROR
-- [х] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
+- [x] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
 - [x] `[UI-01]` Greating, splashscreen
 - [x] `[UI-02]` Basic overlay animation
 - [x] `[UI-03]` Drag/click/throwing interaction

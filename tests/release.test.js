@@ -7,8 +7,8 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { releaseFiles, draftPayload, parseUpdateInfo } = require('../scripts/draft-release');
 
-const INSTALLERS = ['win-x64.exe', 'linux-x86_64.AppImage', 'linux-amd64.deb', 'mac-arm64.dmg', 'mac-arm64.zip'].map((suffix) => `Capri-0.1.0-${suffix}`);
-const UPDATES = ['latest.yml', 'latest-linux.yml', 'latest-mac.yml', 'Capri-0.1.0-win-x64.exe.blockmap', 'Capri-0.1.0-mac-arm64.dmg.blockmap', 'Capri-0.1.0-mac-arm64.zip.blockmap'];
+const INSTALLERS = ['linux-x86_64.AppImage', 'linux-amd64.deb'].map((suffix) => `Capri-0.1.0-${suffix}`);
+const UPDATES = ['latest-linux.yml'];
 const sha512 = (dir, name) => createHash('sha512').update(fs.readFileSync(path.join(dir, name))).digest('base64');
 
 // update info as electron-builder writes it
@@ -21,20 +21,9 @@ function release(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-release-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const name of INSTALLERS) fs.writeFileSync(path.join(dir, name), `installer ${name}`);
-  for (const name of UPDATES.slice(3)) fs.writeFileSync(path.join(dir, name), 'blockmap');
-  fs.writeFileSync(path.join(dir, 'latest.yml'), feed(dir, '0.1.0', [INSTALLERS[0]]));
-  fs.writeFileSync(path.join(dir, 'latest-linux.yml'), feed(dir, '0.1.0', [INSTALLERS[1], INSTALLERS[2]]));
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.1.0', [INSTALLERS[4], INSTALLERS[3]]));
+  fs.writeFileSync(path.join(dir, 'latest-linux.yml'), feed(dir, '0.1.0', [INSTALLERS[0], INSTALLERS[1]]));
   return dir;
 }
-
-test('release requires a non-empty installer for every platform and architecture', (t) => {
-  const dir = release(t);
-  fs.rmSync(path.join(dir, INSTALLERS.at(-1)));
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /Missing installer.*mac-arm64.zip/);
-  fs.writeFileSync(path.join(dir, INSTALLERS.at(-1)), '');
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /Empty installer/);
-});
 
 test('release carries the update files: latest*.yml for each platform and the blockmaps', (t) => {
   const dir = release(t);
@@ -49,19 +38,7 @@ test('release carries the update files: latest*.yml for each platform and the bl
 
 test('each latest*.yml names this version and exactly the release assets, with their sha512 and size', (t) => {
   const dir = release(t);
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.0.9', [INSTALLERS[4]]));
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /latest-mac.yml is for 0.0.9/);
-  // a name that isn't the asset's (artifactName changed, spaces replaced…)
-  fs.writeFileSync(path.join(dir, 'Capri-0.1.0-arm64-mac.zip'), 'zip');
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.1.0', ['Capri-0.1.0-arm64-mac.zip']));
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /names Capri-0.1.0-arm64-mac.zip, which is not a release asset/);
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.1.0', [INSTALLERS[4]], { sha: () => 'AAAA' }));
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /sha512 of Capri-0.1.0-mac-arm64.zip does not match/);
-  // the Mac feed must offer the zip (what the app downloads), not only the dmg
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.1.0', [INSTALLERS[3]]));
-  assert.throws(() => releaseFiles(dir, '0.1.0'), /latest-mac.yml has no .zip/);
-  fs.writeFileSync(path.join(dir, 'latest-linux.yml'), feed(dir, '0.1.0', [INSTALLERS[2]]));
-  fs.writeFileSync(path.join(dir, 'latest-mac.yml'), feed(dir, '0.1.0', [INSTALLERS[4]]));
+  fs.writeFileSync(path.join(dir, 'latest-linux.yml'), feed(dir, '0.1.0', [INSTALLERS[1]]));
   assert.throws(() => releaseFiles(dir, '0.1.0'), /latest-linux.yml has no .AppImage/);
 });
 

@@ -5,23 +5,14 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
-// The installers, then what in-app updates read (docs/UPDATES.md): electron-builder's latest*.yml
 // for each platform and the blockmaps of differential downloads (the AppImage carries its own).
 function releaseFiles(dir, version) {
   const installers = [
-    `Capri-${version}-win-x64.exe`,
     `Capri-${version}-linux-x86_64.AppImage`,
     `Capri-${version}-linux-amd64.deb`,
-    `Capri-${version}-mac-arm64.dmg`,
-    `Capri-${version}-mac-arm64.zip`,
   ];
   const updates = [
-    'latest.yml',
     'latest-linux.yml',
-    'latest-mac.yml',
-    `Capri-${version}-win-x64.exe.blockmap`,
-    `Capri-${version}-mac-arm64.dmg.blockmap`,
-    `Capri-${version}-mac-arm64.zip.blockmap`,
   ];
   for (const name of [...installers, ...updates]) {
     const kind = installers.includes(name) ? 'installer' : 'update file';
@@ -48,7 +39,7 @@ function parseUpdateInfo(text) {
 // Each latest*.yml names this version, lists only assets of this release under their exact names
 // (artifactName), with the right checksum and size, and offers what that platform's updater takes.
 function checkUpdateFeeds(dir, version, installers) {
-  const wants = { 'latest.yml': ['.exe'], 'latest-linux.yml': ['.AppImage'], 'latest-mac.yml': ['.zip'] };
+  const wants = { 'latest-linux.yml': ['.AppImage'] };
   for (const [feed, extensions] of Object.entries(wants)) {
     const info = parseUpdateInfo(fs.readFileSync(path.join(dir, feed), 'utf8'));
     if (info.version !== version) throw new Error(`${feed} is for ${info.version}, not ${version}`);
