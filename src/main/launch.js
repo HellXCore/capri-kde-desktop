@@ -2,16 +2,15 @@
 
 // Opening things when you ask her to (chat.js): an app from the Start menu (Store apps like Spotify
 // included), a Steam or Epic game, your music (the media keys: pause, next…, so it works with
-// Spotify and most players), a Spotify search, or a website. Windows only.
+// Spotify and most players), a Spotify search, or a website.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { app, shell } = require('electron');
-const { powershell } = require('./apps');
 
-const WIN = process.platform === 'win32';
+const LINUX = process.platform === 'linux';
 // not things to open from a chat: uninstallers, help pages and the like
 const SKIP = /uninstall|désinstaller|desinstalar|deinstall|readme|documentation|release notes|support center|website|manual/i;
 const STEAM_SKIP = /redistributable|dedicated server|steamworks/i;
@@ -27,7 +26,6 @@ const words = (text) => plain(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.len
 // Everything she can open: [{ name, kind: 'app' | 'steam' | 'epic', id }]
 async function launchables() {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.items;
-  if (!WIN) return [];
   const items = [];
   const seen = new Set();
   const add = (item) => {
@@ -36,24 +34,26 @@ async function launchables() {
     seen.add(key);
     items.push(item);
   };
-  // games first: a game's own entry wins over a shortcut to it
+  // A game's own entry wins over a shortcut to it
   for (const game of [...steamGames(await steamRoot()), ...epicGames()]) add(game);
-  // the Start menu's list is slow the first time (PowerShell starting cold): main.js asks for it early
-  const out = await powershell('Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress', 45000).catch(() => null);
-  for (const { Name, AppID } of [].concat(out ? JSON.parse(out) : [])) {
-    if (Name && AppID && !/^https?:/i.test(AppID)) add({ name: Name, kind: 'app', id: AppID });
-  }
-  if (out !== null) cache = { at: Date.now(), items }; // a list that failed isn't kept: next time, again
-  return items;
+  for (const e of require('./linux/desktop-entries').list()) {
+      add({ name: e.name, kind: 'app', id: e.id });
+      // In a translated desktop you may still say the name it has everywhere ("konsole", not "Консоль")
+      if (e.generic && e.generic !== e.name) add({ name: e.generic, kind: 'app', id: e.id });
+    }
+    cache = { at: Date.now(), items };
+    return items;
 }
 
-function steamRoot() {
-  return new Promise((resolve) => {
-    execFile('reg.exe', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'SteamPath'], { windowsHide: true, timeout: 5000 }, (err, out) => {
-      const found = !err && /SteamPath\s+REG_SZ\s+(.+)/.exec(String(out))?.[1].trim();
-      resolve(found ? path.normalize(found) : null);
-    });
-  });
+// Steam's (Linux) own folder (the native install, the ~/.steam link, or Flatpak's)
+async function steamRoot() {
+  const home = process.env.HOME || app.getPath('home');
+  const candidates = [
+    path.join(process.env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'Steam'),
+    path.join(home, '.steam', 'steam'),
+    path.join(home, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'Steam'),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, 'steamapps'))) || null;
 }
 
 // Steam's games, from the manifests in each of its libraries
@@ -133,7 +133,6 @@ function match(items, text) {
 // What's on your desktop (yours and the shared one): files, folders and shortcuts, by name.
 function desktopItems() {
   const dirs = [app.getPath('desktop')];
-  if (WIN) dirs.push(path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'));
   const items = [];
   for (const dir of dirs) {
     let entries = [];
@@ -173,13 +172,8 @@ function knownFolder(text) {
 }
 
 function openKnown(id) {
-  if (id === 'explorer' && !WIN) return shell.openPath(app.getPath('home'));
-  if (id === 'recycle' && !WIN) {
-    if (process.platform === 'darwin') return shell.openPath(path.join(app.getPath('home'), '.Trash'));
-    return shell.openExternal('trash:///');
-  }
-  if (id === 'explorer') return spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-  if (id === 'recycle') return spawn('explorer.exe', ['shell:RecycleBinFolder'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+  if (id === 'explorer') return shell.openPath(app.getPath('home'));
+  if (id === 'recycle') return shell.openExternal('trash:///');
   return shell.openPath(app.getPath(id));
 }
 
@@ -207,25 +201,20 @@ async function launch({ kind, id } = {}) {
   const item = (await launchables()).find((i) => i.kind === kind && i.id === id);
   if (!item) throw new Error('not found');
   if (kind === 'steam') return shell.openExternal(`steam://rungameid/${id}`);
+  if (LINUX) {
+    if (kind !== 'app') throw new Error('not found');
+    await require('./linux/desktop-entries').launch(id);
+    return undefined;
+  }
   if (kind === 'epic') return shell.openExternal(`com.epicgames.launcher://apps/${encodeURIComponent(id)}?action=launch&silent=true`);
   spawn('explorer.exe', [`shell:AppsFolder\\${id}`], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
   return undefined;
 }
 
-// The media keys, as if pressed on the keyboard: whatever plays music (Spotify, a browser…) reacts.
-// Play and pause are the same key; the volume moves a few steps at a time. Sent as keys (their virtual
-// key codes), not typed: typed, they come out as "³" or "°" on a German keyboard.
-const MEDIA = { pause: [0xb3, 1], play: [0xb3, 1], next: [0xb0, 1], previous: [0xb1, 1], volup: [0xaf, 5], voldown: [0xae, 5], mute: [0xad, 1] };
-const KEY_DOWN = 1; // KEYEVENTF_EXTENDEDKEY
-const KEY_UP = 3;   // ...and KEYEVENTF_KEYUP
-
+//Redirected to linux media method
 async function media(action) {
-  if (!WIN || !MEDIA[action]) return false;
-  const [key, times] = MEDIA[action];
-  return powershell(
-    'Add-Type -Namespace Capri -Name Keys -MemberDefinition \'[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);\'; '
-    + `1..${times} | ForEach-Object { [Capri.Keys]::keybd_event(${key}, 0, ${KEY_DOWN}, [UIntPtr]::Zero); [Capri.Keys]::keybd_event(${key}, 0, ${KEY_UP}, [UIntPtr]::Zero) }`,
-  ).then(() => true, () => false);
+  if (LINUX) return require('./linux/media').media(action);
+  else return false;
 }
 
 // A Spotify search for it: in the app if it's installed, else on the web.

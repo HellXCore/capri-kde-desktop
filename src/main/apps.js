@@ -2,7 +2,7 @@
 
 // Closing an app when you ask her to (chat.js), after you've confirmed with a click. The apps with
 // a window, by name; closing one the way its own close button does (it can still ask you to save),
-// and only if you ask again, forcing it. Windows only.
+// and only if you ask again, forcing it. KDE on Wayland (the windows KWin reports: linux/apps-linux.js).
 
 const { execFile } = require('node:child_process');
 
@@ -13,32 +13,10 @@ const KEEP = new Set([
   'searchhost', 'searchapp', 'lockapp', 'dwm', 'capri', 'electron', 'claude', 'codex', 'ollama', 'ollama app',
 ]);
 
-function powershell(script, timeout = 15000) {
-  return new Promise((resolve, reject) => {
-    execFile('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${script}`,
-    ], { windowsHide: true, timeout }, (err, out) => (err ? reject(err) : resolve(out.trim())));
-  });
-}
-
-// [{ name, process, ids }]: one per program with a window open ("AM Music", "Discord"...)
+// [{ name, process, ids }]: one per program with a window open. Redirected to apps-linux method
 async function list() {
-  if (process.platform !== 'win32') return [];
-  const out = await powershell(
-    'Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | '
-    + 'ForEach-Object { [pscustomobject]@{ id = $_.Id; name = $_.ProcessName; label = $_.Description } } | '
-    + 'ConvertTo-Json -Compress',
-  );
-  const rows = [].concat(out ? JSON.parse(out) : []);
-  const apps = new Map();
-  for (const { id, name, label } of rows) {
-    if (id === process.pid || KEEP.has(name.toLowerCase())) continue;
-    const app = apps.get(name) || { name, process: name, label: label || '', ids: [] };
-    app.ids.push(id);
-    apps.set(name, app);
-  }
-  return [...apps.values()];
+  if (process.platform === 'linux') return require('./linux/apps-linux').list();
+  else return [];
 }
 
 const simple = (text) => String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -61,19 +39,10 @@ async function find(wanted) {
 
 // Closes it like its close button would; `force` ends it outright (unsaved work is lost).
 // Resolves with what's left: { running } (true when it stayed open, or hid in the tray), and
-// { unsupported } where she can't close apps.
+// { unsupported } where she can't close apps. Redirected to apps-linux method
 async function close(name, { force = false } = {}) {
-  if (process.platform !== 'win32') return { running: false, unsupported: true }; // never "closed" when nothing was
-  const app = (await list()).find((a) => a.process === name);
-  if (!app) return { running: false };
-  const ids = app.ids.join(',');
-  const out = await powershell(force
-    ? `Stop-Process -Id ${ids} -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 600; `
-      + `@(Get-Process -Id ${ids} -ErrorAction SilentlyContinue).Count`
-    : `foreach ($p in @(Get-Process -Id ${ids} -ErrorAction SilentlyContinue)) { [void]$p.CloseMainWindow() }; `
-      + 'Start-Sleep -Milliseconds 2500; '
-      + `@(Get-Process -Name '${name.replace(/'/g, "''")}' -ErrorAction SilentlyContinue).Count`);
-  return { running: Number(out) > 0 };
+  if (process.platform === 'linux') return require('./linux/apps-linux').close(name, { force });
+  else return { running: false, unsupported: true }; // never "closed" when nothing was
 }
 
-module.exports = { list, find, close, powershell };
+module.exports = { list, find, close};
