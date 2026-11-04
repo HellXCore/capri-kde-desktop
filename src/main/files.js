@@ -1,13 +1,12 @@
 'use strict';
 
-// Finding your files when you ask her ("trouve mon CV", "where's my report"). Windows' search
+// Finding your files when you ask her ("trouve mon CV", "where's my report"). KDE Baloo search
 // index first: your whole user folder, by name and by what's in the files, in a blink. If it's off,
 // a walk through your usual folders, by name. Then a screenshot when you ask for one.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { app, shell, desktopCapturer, screen } = require('electron');
-const { powershell } = require('./apps');
 
 const LIMIT = 8;
 const found = new Set(); // what a search showed you: the only paths she opens from here
@@ -21,32 +20,10 @@ const junk = (p) => JUNK.some((j) => p.replaceAll('/', '\\').includes(j));
 // files that are code, left out of a search by what's inside (any word shows up in some library)
 const CODE = ['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'map', 'lock', 'yml', 'yaml', 'py', 'css', 'html', 'md', 'txt', 'xml', 'log'];
 
-// Windows Search: names first (every word in the name, of one of `exts` if any), then what's in
-// documents (not code). null if the index can't be asked.
+// Search redirected to baloo
 async function indexed(terms, exts) {
-  if (process.platform !== 'win32') return null;
-  const safe = terms.map((t) => t.replace(/[^\p{L}\p{N}.]/gu, '')).filter(Boolean);
-  const types = exts.map((e) => e.replace(/[^a-z0-9]/gi, '')).filter(Boolean);
-  if (!safe.length && !types.length) return [];
-  const scope = `file:${app.getPath('home')}`; // backslashes: with slashes the index finds nothing
-  const notJunk = "NOT System.ItemUrl LIKE '%node_modules%' AND NOT System.ItemUrl LIKE '%/AppData/%' AND NOT System.ItemUrl LIKE '%/.git/%'";
-  const ofType = types.length ? `(${types.map((e) => `System.FileExtension = '.${e}'`).join(' OR ')})` : '';
-  const byName = [...safe.map((t) => `System.FileName LIKE '%${t}%'`), ofType].filter(Boolean).join(' AND ');
-  const byText = safe.length && !types.length
-    ? `CONTAINS(*, '${safe.map((t) => `"${t}"`).join(' AND ')}') AND ${CODE.map((e) => `System.FileExtension <> '.${e}'`).join(' AND ')}`
-    : '';
-  // ItemUrl (file:C:/Users/…): the real path. ItemPathDisplay is translated (C:\Utilisateurs\…\Bureau)
-  const query = (where) => `SELECT TOP ${LIMIT} System.ItemUrl FROM SYSTEMINDEX WHERE SCOPE='${scope}' AND ${notJunk} AND ${where} ORDER BY System.DateModified DESC`;
-  const script = [
-    '$c = New-Object -ComObject ADODB.Connection',
-    "$c.Open(\"Provider=Search.CollatorDSO;Extended Properties='Application=Windows';\")",
-    // each query in a single-quoted PowerShell string (its own quotes doubled)
-    ...[byName, byText].filter(Boolean).map((w) => `$r = New-Object -ComObject ADODB.Recordset; $r.Open('${query(w).replace(/'/g, "''")}', $c); while (-not $r.EOF) { $r.Fields.Item('System.ItemUrl').Value; $r.MoveNext() }; $r.Close()`),
-  ].join('; ');
-  const out = await powershell(script, 10000).catch(() => null);
-  if (out == null) return null;
-  const paths = out.split(/\r?\n/).map((l) => l.trim()).filter((l) => /^file:/i.test(l));
-  return [...new Set(paths.map((l) => decodeURIComponent(l.slice(5)).replace(/\//g, '\\')))];
+  if (process.platform === 'linux') return require('./linux/baloo').search(terms, exts, { home: app.getPath('home'), limit: LIMIT * 3 });
+  else return null;
 }
 
 // The walk, when the index isn't there: your usual folders, a few levels down, by name and type.
@@ -116,16 +93,22 @@ async function open(file, { reveal = false } = {}) {
 // A screenshot of the screen she's on, full size, saved in Pictures › Screenshots (made if needed).
 async function screenshot(display) {
   const d = display || screen.getPrimaryDisplay();
-  const k = d.scaleFactor || 1;
-  const size = { width: Math.round(d.bounds.width * k), height: Math.round(d.bounds.height * k) };
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
-  const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
-  if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
+  // Linux: Spectacle takes it from KWin (desktopCapturer, under XWayland, sees only the X windows)
+  const shot = process.platform === 'linux' ? await require('./linux/screenshot').grab({ multi: screen.getAllDisplays().length > 1 }) : null;
+  let png = shot && shot.toPNG();
+  if (!png) {
+    const k = d.scaleFactor || 1;
+    const size = { width: Math.round(d.bounds.width * k), height: Math.round(d.bounds.height * k) };
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+    const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
+    if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
+    png = src.thumbnail.toPNG();
+  }
   const dir = path.join(app.getPath('pictures'), 'Screenshots');
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
   const file = path.join(dir, `Capri ${stamp}.png`);
-  fs.writeFileSync(file, src.thumbnail.toPNG());
+  fs.writeFileSync(file, png);
   found.add(file);
   return { path: file, name: path.basename(file) };
 }
