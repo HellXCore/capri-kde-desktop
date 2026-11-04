@@ -3,16 +3,11 @@
 // Setting her up with buttons, so nobody has to type in a terminal: Ollama (installed with winget,
 // woken up, a model fetched with its progress), an API key pasted in her panel (kept encrypted with
 // your Windows account), and Claude Code or Codex run through Ollama in a window of their own.
-// Windows; elsewhere the buttons open the right pages instead.
 
 const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { safeStorage } = require('electron');
 const ollama = require('./ollama');
-
-const WIN = process.platform === 'win32';
 
 // The models she offers for her chat, with what they weigh (as Ollama lists them)
 const MODELS = [
@@ -32,41 +27,27 @@ const KEY_PAGES = {
 
 function which(cmd) {
   return new Promise((resolve) => {
-    execFile(WIN ? 'where.exe' : 'which', [cmd], { windowsHide: true, timeout: 5000 }, (err, out) => (
+    execFile( 'which', [cmd], { windowsHide: true, timeout: 5000 }, (err, out) => (
       resolve(err ? null : String(out).split(/\r?\n/)[0].trim() || null)));
   });
 }
 
 // Ollama's own app (it runs the server from the tray) and its command, where its installer puts them
 function ollamaFiles() {
-  if (!WIN) return { app: '', cli: '' };
-  const dir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', 'Ollama');
-  return { app: path.join(dir, 'ollama app.exe'), cli: path.join(dir, 'ollama.exe') };
+  return { app: '', cli: '' };
 }
 
 // { running, installed, models, winget }: how far along Ollama is on this PC
 async function ollamaState() {
   const models = await ollama.models().catch(() => null);
   if (models) return { running: true, installed: true, models, winget: false };
-  const [onPath, winget] = await Promise.all([which('ollama'), WIN ? which('winget') : null]);
+  const [onPath, winget] = await Promise.all([which('ollama'), null]);
   return { running: false, installed: fs.existsSync(ollamaFiles().cli) || Boolean(onPath), models: null, winget: Boolean(winget) };
 }
 
-// Installs Ollama with winget (Windows' own package manager); onLine(text) for what it prints.
+// onLine(text) for what it prints.
 function installOllama(onLine) {
-  if (!WIN) return Promise.resolve({ ok: false, error: 'Install Ollama from https://ollama.com/download, then retry.' });
-  return new Promise((resolve) => {
-    const child = spawn('winget', [
-      'install', '--id', 'Ollama.Ollama', '--exact', '--silent',
-      '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity',
-    ], { windowsHide: true });
-    // its progress bars redraw with \r: the last state of each line is enough
-    const read = (chunk) => String(chunk).split(/[\r\n]+/).map((l) => l.trim()).filter((l) => /[a-z]{3}/i.test(l)).forEach((l) => onLine?.(l));
-    child.stdout.on('data', read);
-    child.stderr.on('data', read);
-    child.on('error', (err) => resolve({ ok: false, error: err.message }));
-    child.on('close', (code) => resolve({ ok: code === 0, code }));
-  });
+  return Promise.resolve({ ok: false, error: 'Install Ollama from https://ollama.com/download, then retry.' });
 }
 
 // Wakes Ollama up (its app, else `ollama serve` in the background) and waits for it to answer.
@@ -119,16 +100,31 @@ async function pullModel(name, onProgress, signal) {
 
 // Claude Code (or Codex) through Ollama, in a window of its own: Ollama fetches what's missing and
 // asks which model to use. She sees it like any other session, through her hooks.
+// Linux: the first terminal there is, with the command run in it and the window left open after
+const TERMINALS = [
+  ['konsole', ['-e']],
+  ['xdg-terminal-exec', []],
+  ['gnome-terminal', ['--']],
+  ['kitty', []],
+  ['alacritty', ['-e']],
+  ['xterm', ['-e']],
+];
+
+async function launchInTerminal(integration) {
+  for (const [terminal, prefix] of TERMINALS) {
+    if (!(await which(terminal))) continue;
+    // integration is one of two fixed words (checked by the caller): nothing of yours in the command
+    spawn(terminal, [...prefix, 'bash', '-lc', `ollama launch ${integration}; exec bash`], { detached: true, stdio: 'ignore' })
+      .on('error', () => {}).unref();
+    return { ok: true };
+  }
+  return { ok: false, error: 'no terminal found' };
+}
+
 function launchThroughOllama(integration) {
-  if (!WIN || !['claude', 'codex'].includes(integration)) return { ok: false };
-  const { cli } = ollamaFiles();
-  // `start` opens a new console window (its first quoted argument is the window's title); cmd /k
-  // strips the outer quotes of what follows, so a path with spaces in it keeps its own
-  const command = `""${fs.existsSync(cli) ? cli : 'ollama'}" launch ${integration}"`;
-  spawn('cmd.exe', ['/d', '/c', 'start', '"Capri"', 'cmd.exe', '/k', command], {
-    detached: true, stdio: 'ignore', windowsVerbatimArguments: true,
-  }).on('error', () => {}).unref();
-  return { ok: true };
+  if (!['claude', 'codex'].includes(integration)) return { ok: false };
+  if (process.platform === 'linux') return launchInTerminal(integration);
+  else return { ok: false };
 }
 
 // API keys are kept encrypted in config.json, with your Windows account (DPAPI): "enc:<base64>".
