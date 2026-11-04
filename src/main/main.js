@@ -18,7 +18,7 @@ const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const { watchPower } = require('./power');
 const { createInputRegion } = require('./linux/x11-input');
-const { createCapabilities } = require('./capabilities');
+const { createCapabilities, ozonePlatform } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
 const { startUpdates, isReleasePage } = require('./updates');
@@ -34,8 +34,17 @@ const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
 const demoSteps = require('../../scripts/demo-sequence');
-// what works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
-const caps = createCapabilities();
+
+// What works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
+const ozone = ozonePlatform(app); // the --ozone-platform flag Electron was started with, if any
+const caps = createCapabilities({ ozone }); // the session follows what Electron runs on
+// Debug log
+console.log(`[capri] display session: ${caps.session} (Electron ${process.versions.electron}, --ozone-platform=${ozone || 'not given'}, `
+  + `XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || '-'}, WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY || '-'}, DISPLAY=${process.env.DISPLAY || '-'})`);
+// KDE on Wayland: Capri overlay must be a window KWin manages. "focusable: false" on Linux makes the
+// window stop interacting with the window manager, and KWin gives no keyboard input to such a window.
+// KWin managed window gets the keyboard while Capri chat is open (overlay:focus, the KWin script).
+const LINUX_MANAGED = process.platform === 'linux' && caps.session !== 'x11' && /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || '');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
@@ -60,14 +69,14 @@ protocol.registerSchemesAsPrivileged([
 let overlay = null;
 let inputRegion = null; // X11 input shape (null: not available, old setShape fallback)
 let tray = null;
-let trayMenu = null; // also what she opens when you right-click her
-let settings = null; // her settings window (settings-window.js), made in main()
-let updates = null; // the app's updates (updates.js): what her settings and her menu show
-let updateOffered = null; // the version her menu offers
-let updateSaid = null; // the version she has mentioned (once)
+let trayMenu = null; // Also what she opens when you right-click her
+let settings = null; // Capri settings window (settings-window.js), made in main()
+let updates = null; // The app's updates (updates.js): what her settings and her menu show
+let updateOffered = null; // The version her menu offers
+let updateSaid = null; // The version she has mentioned (once)
 let demoTimer = null;
 let windowWatch = null;
-let powerWatch = null; // screen locked / asleep (power.js): her overlay pauses its decorative work
+let powerWatch = null; // Screen locked / asleep (power.js): her overlay pauses its decorative work
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
 let lastWindows = null;
 let chatModels = null; // the provider's models, as last seen (null: not reached)
@@ -101,8 +110,8 @@ function forgetChats() {
   sendCommand('forget');
 }
 
-// capri://app/...        -> files of this repo
-// capri://usersounds/... -> the user's own sound overrides
+// Capri://app/...        -> files of this repo
+// Capri://usersounds/... -> the user's own sound overrides
 function serveProtocol() {
   protocol.handle('capri', (request) => {
     const url = new URL(request.url);
@@ -181,6 +190,7 @@ function rearmOverlay() {
     overlay.setIgnoreMouseEvents(true, { forward: true });
   }
   overlay.setAlwaysOnTop(true, 'screen-saver');
+  if (LINUX_MANAGED) overlay.setFocusable(false);
   fitOverlay();
   sendCommand('rearmed');
 }
@@ -209,7 +219,8 @@ function createOverlay() {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    focusable: false,
+    focusable: LINUX_MANAGED, // (set to false again below there, and only true while Capri chat is open)
+    ...(LINUX_MANAGED ? { title: OVERLAY_TITLE } : {}),
     hasShadow: false,
     alwaysOnTop: true,
     type: undefined,
@@ -231,12 +242,13 @@ function createOverlay() {
   } else {
     // Linux (X11/XWayland): the window is drawn in full, only the input shape is limited.
     // Empty before the first render, so the window doesn't intercept clicks across the screen.
-    inputRegion = createInputRegion(overlay);
+    // Native Wayland window (no X id to give it)
+    inputRegion = caps.session === 'wayland' ? null : createInputRegion(overlay);
     if (inputRegion) inputRegion.set([], 1);
     else overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]); // fallback:
   }
   overlay.loadURL('capri://app/src/renderer/index.html');
-  // always shown: put away, she's still there as her biochip in the corner. Sized again first:
+  // Always shown: put away, she's still there as her biochip in the corner. Sized again first:
   // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
   overlay.once('ready-to-show', () => {
     fitOverlay();
@@ -759,7 +771,7 @@ function refreshCloud(force = false) {
   return cloudCheck;
 }
 
-// A model fetched with Ollaat Session.<anonymous> (node:electron/js2c/browser_init:1:119048)
+// A model fetched with Ollama (a cloud one is only a small file), then her chat on it.
 async function fetchModel(name, onProgress, signal) {
   await setup.pullModel(name, onProgress, signal);
   updateConfig({ provider: 'ollama' });
@@ -924,7 +936,9 @@ function registerIpc() {
 });
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
-    const p = screen.getCursorScreenPoint();
+    // KDE Wayland: XWayland only follows the pointer over X windows, so Electron's own 
+    // point goes stale over native Wayland ones; the KWin script knows where it really is
+    const p = windowWatch?.cursor?.() || screen.getCursorScreenPoint();
     const b = overlay.getBounds();
     const inside = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
     return { x: p.x - b.x, y: p.y - b.y, inside, display: displayAt(p).id };
@@ -1128,6 +1142,9 @@ function registerIpc() {
   ipcMain.on('overlay:focus', (_e, on) => {
     if (!overlay) return;
     overlay.setFocusable(Boolean(on));
+    // KDE Wayland: KWin does not hand the keyboard to a window that asks for it, so its script
+    // activates her overlay, and gives it back to the window you were on when her chat is done
+    windowWatch?.focus?.(Boolean(on));
     if (on) overlay.focus();
     else overlay.blur();
   });
@@ -1441,7 +1458,7 @@ function main() {
 
   app.whenReady().then(() => {
     if (!['codex', 'claude'].includes(config.load().assistant)) config.save({ assistant: activeAssistant().id });
-    else if (!DEV) Menu.setApplicationMenu(null);
+    if (!DEV) Menu.setApplicationMenu(null);
     serveProtocol();
     registerIpc();
     settings = createSettingsWindow({
@@ -1458,8 +1475,19 @@ function main() {
     caps.onChange(() => updateConfig({}));
     windowWatch = startWindowWatch({
       overlay,
-      session: caps.session, // Linux: X11, XWayland throw kwin qml script
-      onState: (ok) => caps.set('windowTracking', ok),
+      session: caps.session, // Linux: X11, XWayland through the kwin qml script
+      onState: (ok) => {
+        caps.set('windowTracking', ok);
+        // KDE Wayland: the same KWin script lists and closes the apps, and owns global
+        // shortcut(Ctrl+Alt+C). XWayland only reaches shortcut while an X window has focus
+        if (windowWatch?.source === 'kwin') {
+          caps.set('appList', ok);
+          caps.set('appClose', ok);
+          if (ok) globalShortcut.unregister('Control+Alt+C');
+          else if (!globalShortcut.isRegistered('Control+Alt+C')) globalShortcut.register('Control+Alt+C', () => toggleVisible());
+        }
+      },
+      onCommand: (name) => name === 'toggle' && toggleVisible(),
       onUpdate: (data) => {
         // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
         if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();

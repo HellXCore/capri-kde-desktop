@@ -9,7 +9,7 @@
 const path = require('node:path');
 const { screen, app } = require('electron');
 
-// The snapshots of a watcher, as seen from her window, to onUpdate. `toDip(win)`: the watcher's
+// The snapshots of a watcher, as seen from her window, to onUpdate. "toDip(win)" the watcher's
 // physical-pixel rect -> Electron's screen DIPs ({ x, y, width, height }).
 // `ai`, `game`, `usb`, `plug` are what only the Windows helper used to report; they stay in the
 // shape the overlay expects (empty on Linux, except `ai` from the KWin script).
@@ -44,10 +44,9 @@ function createFeed({ overlay, onUpdate, toDip }) {
   };
 }
 
-// `session` from capabilities.linuxSession(); never just because it is Linux: an X11 session is
-// read through the window manager; a KDE Wayland session through a KWin script. Other Wayland
-// desktops stay off (startX11Watch says so): they have nothing that lists every window.
-function startLinuxWatch({ overlay, onUpdate, onState, session }) {
+// An X11 session is read through the window manager. A KDE Wayland session through a KWin script.
+// Other Wayland desktops stay off becouse they have nothing that lists every window.
+function startLinuxWatch({ overlay, onUpdate, onState, onCommand, session }) {
   // required by its full path, so the module loads the same however this file was loaded
   const { startX11Watch } = require(path.join(__dirname, 'linux', 'x11-watch.js'));
   const x11 = require(path.join(__dirname, 'linux', 'x11.js'));
@@ -62,11 +61,30 @@ function startLinuxWatch({ overlay, onUpdate, onState, session }) {
     const watch = startKWinWatch({
       session,
       scriptDir: path.join(app.getPath('userData'), 'kwin'),
-      getSelf: () => ({ pid: process.pid, title: TITLE }),
+      getSelf: () => {
+        // where her window is, in the X screen's pixels (what KWin sees): its DIPs times the scale
+        const b = overlay.getBounds();
+        const k = (screen.getDisplayMatching(b) || {}).scaleFactor || 1;
+        return { pid: process.pid, title: TITLE, rect: { x: Math.round(b.x * k), y: Math.round(b.y * k), w: Math.round(b.width * k), h: Math.round(b.height * k) } };
+      },
       onSnapshot: feed.push,
       onState,
+      onCommand,
     });
-    return { stop: watch.stop, refresh: feed.send };
+    return {
+      stop: watch.stop,
+      refresh: feed.send,
+      source: 'kwin', // The same script also lists and closes apps, and owns Ctrl+Alt+C
+      focus: (on) => watch.focus(on), // The keyboard, for typing to Capri's chat
+      // Where the pointer in the screen's DIPs ({ x, y }), or null until KWin has said:
+      // under XWayland Electron's own cursor point is stale over native Wayland windows
+      cursor: () => {
+        const at = watch.cursor();
+        if (!at) return null;
+        const dip = x11.pxToDip({ x: at.x, y: at.y, w: 0, h: 0 }, screen.getAllDisplays());
+        return { x: dip.x, y: dip.y };
+      },
+    };
   }
 
   const watch = startX11Watch({
@@ -80,9 +98,9 @@ function startLinuxWatch({ overlay, onUpdate, onState, session }) {
 
 // onState(ok): the watcher runs (true), or gave up after its restarts (false): capabilities.js
 // session: 'x11' | 'xwayland' | 'wayland' | null, from capabilities.js
-function startWindowWatch({ overlay, onUpdate, onState = () => {}, session = null }) {
+function startWindowWatch({ overlay, onUpdate, onState = () => {}, onCommand = () => {}, session = null }) {
   if (process.platform !== 'linux') return { stop() {}, refresh() {} };
-  return startLinuxWatch({ overlay, onUpdate, onState, session });
+  return startLinuxWatch({ overlay, onUpdate, onState, onCommand, session });
 }
 
 module.exports = { startWindowWatch, createFeed };

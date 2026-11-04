@@ -16,6 +16,18 @@
 // Window ids are KWin-side counters, not X11 ids (the KWin scripting API has no X11 window id).
 // Coordinates are KWin's global logical pixels.
 //
+// Besides the windows it also:
+//   - tells where the pointer is (Workspace.cursorPos): XWayland follows it only over X windows
+//   - owns Ctrl+Alt+C as a real global shortcut (ShortcutHandler; it shows up in KDE's shortcut
+//     settings, under KWin, and can be changed there)
+//   - closes an app's windows when the receiver asks (Poll), as their close button would
+//   - gives the overlay itself the window flags it needs: above, on every desktop, in no taskbar,
+//     pager or task switcher, and keeps it where Electron put it
+//   - looks after the keyboard: her overlay is a window KWin manages, so a click on her would take
+//     the focus from what you are typing in. It is handed back at once, except while her chat is
+//     open (the receiver says so): then the overlay is the active window, so what you type reaches
+//     her text field instead of going to the desktop (where it would open KRunner)
+//
 // Loaded and unloaded by kwin-bridge.js through org.kde.KWin /Scripting; nothing to install.
 
 import QtQuick
@@ -35,6 +47,11 @@ Item {
     property int nextId: 1
     property string lastJson: ""
     property bool failing: false
+    property string cursorKey: ""
+    property var tuned: ({})   // overlay windows already given their flags
+    property bool focusWanted: false // her chat is open: the keyboard is hers
+    property var lastActive: null    // the window you were on, to give the keyboard back to
+    property int misplaced: 0        // polls in a row the overlay was not where it should be
 
     // ---------- what to send ----------
 
@@ -124,6 +141,8 @@ Item {
             types: root.typesOf(w),
             state: root.stateOf(w),
             desktop: root.desktopOf(w, current),
+            cls: w.resourceClass ? String(w.resourceClass) : "", // for the list of open apps; never a title
+            app: w.desktopFileName ? String(w.desktopFileName) : "",
             frame: null, // KWin's frameGeometry already is the outer rectangle, title bar included
             csd: null,   // and without the shadow a client-side-decorated window draws around itself
             pid: w.pid > 0 ? w.pid : null,
@@ -135,27 +154,32 @@ Item {
         return { x: Math.round(g.x), y: Math.round(g.y), w: Math.round(g.width), h: Math.round(g.height) };
     }
 
-    // The AIs the window in front is, by the keys bond.js knows (RIVALS). Only these leave KWin,
-    // never the title. Keep it in step with the list in windows.ps1.
+    // The AIs the window in front is, by the keys bond.js knows (RIVALS): the rules of windows.ps1 (its
+    // title, or the program it belongs to). Only the keys leave KWin, never the title.
     function aiKeys(w) {
         if (!w) return [];
-        const title = String(w.captionNormal || w.caption || "").toLowerCase();
+        const title = String(w.captionNormal || w.caption || "");
+        const programs = [
+            String(w.resourceClass || "").toLowerCase(),
+            String(w.desktopFileName || "").replace(/\.desktop$/, "").toLowerCase(),
+        ];
+        // [key, title pattern, program ("" : by title only)]
         const table = [
-            ["chatgpt", /chat\s?gpt/],
-            ["claude", /\bclaude\b/],
-            ["codex", /\bcodex\b/],
-            ["gemini", /\bgemini\b/],
-            ["copilot", /\bcopilot\b/],
-            ["perplexity", /\bperplexity\b/],
-            ["deepseek", /\bdeepseek\b/],
-            ["grok", /\bgrok\b/],
-            ["lechat", /\ble\s?chat\b|\blechat\b/],
-            ["characterai", /character\.?\s?ai/],
-            ["metaai", /\bmeta\s?ai\b/],
+            ["chatgpt", /\bChatGPT\b/i, "chatgpt"],
+            ["claude", /\bClaude\b/i, "claude"],
+            ["codex", /\bCodex\b/i, "codex"],
+            ["gemini", /\bGemini\b/i, ""],
+            ["copilot", /\bCopilot\b/i, "copilot"],
+            ["perplexity", /\bPerplexity\b/i, "perplexity"],
+            ["deepseek", /\bDeepSeek\b/i, ""],
+            ["grok", /\bGrok\b/i, ""],
+            ["lechat", /\bLe Chat\b|\bMistral AI\b/i, ""],
+            ["characterai", /character\.ai/i, ""],
+            ["metaai", /\bMeta AI\b/i, ""],
         ];
         const found = [];
         for (let i = 0; i < table.length; i++) {
-            if (table[i][1].test(title)) found.push(table[i][0]);
+            if (table[i][1].test(title) || (table[i][2] !== "" && programs.indexOf(table[i][2]) >= 0)) found.push(table[i][0]);
         }
         return found;
     }
@@ -181,7 +205,11 @@ Item {
         const rects = {};
         for (let i = order.length - 1; i >= 0 && stacking.length < root.maxWindows; i--) {
             const w = order[i];
-            if (!w || w.deleted || w.outline || !w.managed || root.isSelf(w)) continue;
+            if (!w || w.deleted || w.outline || !w.managed) continue;
+            if (root.isSelf(w)) {
+                root.tune(w);
+                continue;
+            }
             const id = root.idOf(w);
             stacking.push(id);
             infos[id] = root.describe(w, current);
@@ -215,6 +243,147 @@ Item {
             front: front,
             outputs: root.outputs(),
         };
+    }
+
+    // The overlay: above everything, on every desktop, and not a thing to switch to or list.
+    function tune(w) {
+        const key = String(w.internalId);
+        if (root.tuned[key]) return;
+        root.tuned[key] = true;
+        try {
+            w.keepAbove = true;
+            w.onAllDesktops = true;
+            w.skipTaskbar = true;
+            w.skipPager = true;
+            w.skipSwitcher = true;
+        } catch (e) {
+            console.warn("capri-windows: could not set the overlay's flags:", e);
+        }
+        root.place(w, true);
+    }
+
+    // The overlay where Electron put it: KWin may place a new window by its own rules. Only when it
+    // has been off for a few polls in a row, so that Electron moving it (to another screen) is not
+    // undone before the receiver has said where it went.
+    function place(w, now) {
+        const r = root.cfg.selfRect;
+        if (!r) return;
+        const g = w.frameGeometry;
+        const same = Math.abs(g.x - r.x) <= 1 && Math.abs(g.y - r.y) <= 1
+            && Math.abs(g.width - r.w) <= 1 && Math.abs(g.height - r.h) <= 1;
+        if (same) {
+            root.misplaced = 0;
+            return;
+        }
+        root.misplaced += 1;
+        if (now || root.misplaced >= 3) {
+            root.misplaced = 0;
+            try {
+                w.frameGeometry = Qt.rect(r.x, r.y, r.w, r.h);
+            } catch (e) {
+                console.warn("capri-windows: could not place the overlay:", e);
+            }
+        }
+    }
+
+    function selfWindow() {
+        const order = Workspace.stackingOrder;
+        for (let i = 0; i < order.length; i++) {
+            if (order[i] && !order[i].deleted && root.isSelf(order[i])) return order[i];
+        }
+        return null;
+    }
+
+    // ---------- the keyboard ----------
+
+    function giveBack() {
+        const w = root.lastActive;
+        if (!w || w.deleted) return;
+        try {
+            Workspace.activeWindow = w;
+        } catch (e) {
+            // gone meanwhile
+        }
+    }
+
+    function setFocus(on) {
+        root.focusWanted = on;
+        const mine = root.selfWindow();
+        if (!mine) return;
+        if (on) {
+            try {
+                Workspace.activeWindow = mine;
+            } catch (e) {
+                console.warn("capri-windows: could not give her the keyboard:", e);
+            }
+        } else if (Workspace.activeWindow && root.isSelf(Workspace.activeWindow)) {
+            root.giveBack();
+        }
+    }
+
+    function windowActivated(w) {
+        if (w && root.isSelf(w)) {
+            if (!root.focusWanted) root.giveBack(); // a click on her is no reason to lose your place
+        } else if (w) {
+            root.lastActive = w;
+        }
+        root.schedule();
+    }
+
+    // every few ticks, while polling: the overlay still where it should be?
+    function checkSelf() {
+        const mine = root.selfWindow();
+        if (mine) root.place(mine, false);
+    }
+
+    // ---------- the pointer, the shortcut, the commands ----------
+
+    // only when it moved ("x,y" as a string: a plain type for the receiver to read)
+    function sendCursor() {
+        const p = Workspace.cursorPos;
+        const key = Math.round(p.x) + "," + Math.round(p.y);
+        if (key === root.cursorKey) return;
+        root.cursorKey = key;
+        cursorCall.arguments = [key];
+        cursorCall.call();
+    }
+
+    function command(name) {
+        commandCall.arguments = [JSON.stringify({ name: name })];
+        commandCall.call();
+    }
+
+    // the receiver's answer to a poll: { self, commands: [{ op: "close", pids }, { op: "focus", on }] }
+    function runCommands(text) {
+        let answer = {};
+        try {
+            answer = JSON.parse(text);
+        } catch (e) {
+            return;
+        }
+        if (answer.self) root.applySelf(answer.self);
+        const queued = answer.commands || [];
+        for (let i = 0; i < queued.length; i++) {
+            if (queued[i].op === "close") root.closeWindows(queued[i].pids);
+            else if (queued[i].op === "focus") root.setFocus(Boolean(queued[i].on));
+        }
+    }
+
+    // like the close button: the app can still ask to save
+    function closeWindows(pids) {
+        if (!pids || pids.length === 0) return;
+        const order = Workspace.stackingOrder;
+        for (let i = 0; i < order.length; i++) {
+            const w = order[i];
+            if (!w || w.deleted || !w.closeable || root.isSelf(w)) continue;
+            if (!(w.normalWindow || w.dialog)) continue;
+            if (pids.indexOf(w.pid) < 0) continue;
+            try {
+                w.closeWindow();
+            } catch (e) {
+                console.warn("capri-windows: could not close a window:", e);
+            }
+        }
     }
 
     // ---------- when to send ----------
@@ -262,15 +431,17 @@ Item {
     function onReply(returned) {
         root.failing = false;
         try {
-            const next = JSON.parse(returned[0]);
-            if (next && typeof next === "object") {
-                const changed = next.selfPid !== root.cfg.selfPid || next.selfTitle !== root.cfg.selfTitle;
-                root.cfg = next;
-                if (changed) root.lastJson = ""; // send again, now without the overlay
-            }
+            root.applySelf(JSON.parse(returned[0]));
         } catch (e) {
             // an empty or foreign reply: keep what we know
         }
+    }
+
+    function applySelf(next) {
+        if (!next || typeof next !== "object") return;
+        const changed = next.selfPid !== root.cfg.selfPid || next.selfTitle !== root.cfg.selfTitle;
+        root.cfg = next;
+        if (changed) root.lastJson = ""; // send again, now without the overlay
     }
 
     function onFailed() {
@@ -290,6 +461,40 @@ Item {
         onFailed: root.onFailed()
     }
 
+    DBusCall {
+        id: cursorCall
+        service: "org.capri.WindowBridge"
+        path: "/org/capri/WindowBridge"
+        dbusInterface: "org.capri.WindowBridge"
+        method: "Cursor"
+        onFailed: root.onFailed()
+    }
+
+    DBusCall {
+        id: commandCall
+        service: "org.capri.WindowBridge"
+        path: "/org/capri/WindowBridge"
+        dbusInterface: "org.capri.WindowBridge"
+        method: "Command"
+        onFailed: root.onFailed()
+    }
+
+    DBusCall {
+        id: pollCall
+        service: "org.capri.WindowBridge"
+        path: "/org/capri/WindowBridge"
+        dbusInterface: "org.capri.WindowBridge"
+        method: "Poll"
+        onFinished: (returned) => root.runCommands(returned[0])
+    }
+
+    ShortcutHandler {
+        name: "Capri: stow her or bring her back"
+        text: "Capri: stow her or bring her back"
+        sequence: "Ctrl+Alt+C"
+        onActivated: root.command("toggle")
+    }
+
     Timer {
         id: flushTimer
         interval: 40
@@ -306,6 +511,26 @@ Item {
         onTriggered: root.flush()
     }
 
+    // The receiver's commands (the keyboard for her chat, closing an app): often enough that typing
+    // to her works as soon as the chat opens.
+    Timer {
+        interval: 150
+        repeat: true
+        running: true
+        onTriggered: {
+            pollCall.call();
+            root.checkSelf();
+        }
+    }
+
+    // 20 times a second at most, and only while the pointer moves
+    Timer {
+        interval: 50
+        repeat: true
+        running: true
+        onTriggered: root.sendCursor()
+    }
+
     Connections {
         target: Workspace
 
@@ -320,7 +545,7 @@ Item {
         }
 
         function onWindowActivated(window) {
-            root.schedule();
+            root.windowActivated(window);
         }
 
         function onScreensChanged() {
