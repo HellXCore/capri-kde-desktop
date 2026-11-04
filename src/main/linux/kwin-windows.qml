@@ -23,6 +23,9 @@
 //   - closes an app's windows when the receiver asks (Poll), as their close button would
 //   - gives the overlay itself the window flags it needs: above, on every desktop, in no taskbar,
 //     pager or task switcher, and keeps it where Electron put it
+//   - keeps the overlay above the other windows: it is a window KWin manages, so a window kept on top
+//     (a demo terminal, a video popped out, one you pinned) is in the same layer and the one raised
+//     last is on top; she is raised again, or what she draws over a window would be hidden
 //   - looks after the keyboard: her overlay is a window KWin manages, so a click on her would take
 //     the focus from what you are typing in. It is handed back at once, except while her chat is
 //     open (the receiver says so): then the overlay is the active window, so what you type reaches
@@ -52,6 +55,7 @@ Item {
     property bool focusWanted: false // her chat is open: the keyboard is hers
     property var lastActive: null    // the window you were on, to give the keyboard back to
     property int misplaced: 0        // polls in a row the overlay was not where it should be
+    property string raisedFor: ""    // the windows over her when she was last raised
 
     // ---------- what to send ----------
 
@@ -308,6 +312,7 @@ Item {
 
     function setFocus(on) {
         root.focusWanted = on;
+        if (on) giveBackTimer.stop();
         const mine = root.selfWindow();
         if (!mine) return;
         if (on) {
@@ -321,19 +326,71 @@ Item {
         }
     }
 
+    // A click on her is no reason to lose your place, but the keyboard is only taken back a moment
+    // later: moved away in the middle of the click, the press and the release no longer belong
+    // together (Chromium drops the mouse when its window loses the focus), and she would not answer.
     function windowActivated(w) {
         if (w && root.isSelf(w)) {
-            if (!root.focusWanted) root.giveBack(); // a click on her is no reason to lose your place
+            if (!root.focusWanted) giveBackTimer.restart();
         } else if (w) {
             root.lastActive = w;
         }
+        root.ensureTop();
         root.schedule();
     }
 
-    // every few ticks, while polling: the overlay still where it should be?
+    function giveBackIfStill() {
+        const active = Workspace.activeWindow;
+        if (!root.focusWanted && active && root.isSelf(active)) root.giveBack();
+    }
+
+    // every few ticks, while polling: the overlay still where it should be, and still on top?
     function checkSelf() {
         const mine = root.selfWindow();
         if (mine) root.place(mine, false);
+        root.ensureTop();
+    }
+
+    // shown to you now: not minimized, on the workspace in view, on this activity
+    function isShown(w, current) {
+        if (w.minimized || w.hidden || !root.onActivity(w)) return false;
+        const d = root.desktopOf(w, current);
+        return d === root.allDesktops || d === current;
+    }
+
+    // She has to be above every window you can see, or what she draws over one (the glitch of a
+    // possession) is hidden. Raised once for each set of windows over her: a full-screen window is
+    // in a higher layer, raising her does not get past it, and doing it again would change nothing.
+    function ensureTop() {
+        const order = Workspace.stackingOrder;
+        let at = -1;
+        for (let i = 0; i < order.length; i++) {
+            if (order[i] && !order[i].deleted && root.isSelf(order[i])) {
+                at = i;
+                break;
+            }
+        }
+        if (at < 0) return;
+        const current = Workspace.currentDesktop ? root.deskIndex(Workspace.currentDesktop) : null;
+        const over = [];
+        for (let i = at + 1; i < order.length; i++) {
+            const w = order[i];
+            if (!w || w.deleted || !w.managed) continue;
+            if (!(w.normalWindow || w.dialog || w.utility || w.toolbar || w.splash)) continue;
+            if (root.isShown(w, current)) over.push(root.idOf(w));
+        }
+        if (over.length === 0) {
+            root.raisedFor = "";
+            return;
+        }
+        const key = over.join(",");
+        if (key === root.raisedFor) return;
+        root.raisedFor = key;
+        try {
+            Workspace.raiseWindow(order[at]);
+        } catch (e) {
+            console.warn("capri-windows: could not raise the overlay:", e);
+        }
     }
 
     // ---------- the pointer, the shortcut, the commands ----------
@@ -389,6 +446,7 @@ Item {
     // ---------- when to send ----------
 
     function flush() {
+        root.ensureTop();
         const json = JSON.stringify(root.collect());
         if (json === root.lastJson) return; // nothing changed: nothing sent
         root.lastJson = json;
@@ -493,6 +551,13 @@ Item {
         text: "Capri: stow her or bring her back"
         sequence: "Ctrl+Alt+C"
         onActivated: root.command("toggle")
+    }
+
+    Timer {
+        id: giveBackTimer
+        interval: 250
+        repeat: false
+        onTriggered: root.giveBackIfStill()
     }
 
     Timer {

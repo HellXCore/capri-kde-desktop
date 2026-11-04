@@ -237,16 +237,15 @@ function createOverlay() {
   
   overlay.on('page-title-updated', (e) => e.preventDefault());
   overlay.setAlwaysOnTop(true, 'screen-saver');
-  if (process.platform !== 'linux') {
-    overlay.setIgnoreMouseEvents(true, { forward: true });
-  } else {
-    // Linux (X11/XWayland): the window is drawn in full, only the input shape is limited.
-    // Empty before the first render, so the window doesn't intercept clicks across the screen.
-    // Native Wayland window (no X id to give it)
-    inputRegion = caps.session === 'wayland' ? null : createInputRegion(overlay);
-    if (inputRegion) inputRegion.set([], 1);
-    else overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]); // fallback:
-  }
+  // Not focusable from the start. A click on must not make KWin activate the overlay 
+  // (listening the keyboard input is only while Capri's chat is open, overlay:focus)
+  if (LINUX_MANAGED) overlay.setFocusable(false);
+  // Linux (X11/XWayland): the window is drawn in full, only the input shape is limited.
+  // Empty before the first render, so the window doesn't intercept clicks across the screen.
+  // Native Wayland window (no X id to give it)
+  inputRegion = caps.session === 'wayland' ? null : createInputRegion(overlay);
+  if (inputRegion) inputRegion.set([], 1);
+  else overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]); // fallback:
   overlay.loadURL('capri://app/src/renderer/index.html');
   // Always shown: put away, she's still there as her biochip in the corner. Sized again first:
   // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
@@ -254,6 +253,7 @@ function createOverlay() {
     fitOverlay();
     overlay.showInactive();
     inputRegion?.reapply(); // once mapped
+    if (LINUX_MANAGED) overlay.setFocusable(false); // again, now that it is mapped
   });
   overlay.webContents.on('render-process-gone', (_e, details) => {
     console.error('[capri] renderer gone:', details.reason);
@@ -1421,31 +1421,6 @@ function applyRender() {
   }
   // --dev: what Chromium ended up drawing with
   if (DEV) app.whenReady().then(() => setTimeout(() => console.log('[capri] display:', render, JSON.stringify(app.getGPUFeatureStatus())), 4000));
-}
-
-// macOS: the keyboard shortcuts of text fields (Cmd+C, V, X, A, Z) come from the app's menu, and
-// without one they do nothing in her settings window (pasting a key). A small one, then: the app
-// with Quit, Edit, Window. Reload and DevTools only in --dev. Windows and Linux need none (text
-// fields have their shortcuts without it), and Electron's default one is removed there outside --dev:
-// it would give her windows Ctrl+R (reload), Ctrl+Shift+I (DevTools) and Ctrl+W (close her overlay).
-function appMenu() {
-  return Menu.buildFromTemplate([
-    { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { type: 'separator' }, { role: 'quit' }] },
-    {
-      role: 'editMenu',
-      submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }],
-    },
-    // not the roles: Cmd+W / Cmd+M would close or minimize her overlay too, focused while you type
-    // in her chat, and with no Dock icon there'd be no getting her back
-    {
-      role: 'windowMenu',
-      submenu: [
-        { label: 'Minimize', accelerator: 'CmdOrCtrl+M', click: (_item, win) => win && win !== overlay && win.minimize() },
-        { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: (_item, win) => win && win !== overlay && win.close() },
-      ],
-    },
-    ...(DEV ? [{ label: 'Dev', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }] }] : []),
-  ]);
 }
 
 function main() {
