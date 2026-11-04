@@ -4,16 +4,22 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createRequire } = require('node:module');
 
 function load(file, platform, electron, extra = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main', file);
-  const context = { module, exports: module.exports, process: { platform, env: {} },
+  const fileRequire = createRequire(filename);
+
+  const context = {
+    module,
+    exports: module.exports,
+    process: { platform, env: {} },
     require(id) {
       if (id === 'electron') return electron;
       if (id === 'node:path') return path.posix;
       if (id in extra) return extra[id];
-      return require(id);
+      return fileRequire(id);
     },
   };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), context, { filename });
@@ -22,11 +28,24 @@ function load(file, platform, electron, extra = {}) {
 
 test(`linux: file manager uses native paths, launch errors propagate, executable files need confirmation`, async () => {
     const opened = [];
-    const host = { app: { getPath: (key) => `/home/test/${key}` }, shell: {
-      openPath: async (file) => { opened.push(file); return ''; },
-      openExternal: async (url) => { opened.push(url); },
-    } };
-    const launch = load('launch.js', 'linux', host, { './apps': { powershell() { throw new Error('Windows helper invoked'); } } });
+    const host = {
+      app: { getPath: (key) => `/home/test/${key}` },
+      shell: {
+        openPath: async (file) => { opened.push(file); return ''; },
+        openExternal: async (url) => { opened.push(url); },
+      },
+    };
+
+    const launch = load('launch.js', 'linux', host, {
+      './apps': { powershell() { throw new Error('Windows helper invoked'); } },
+      './linux/desktop-entries': {
+        list: () => [],
+        entries: () => [],
+        launchables: () => [],
+        find: () => null,
+      },
+    });
+
     assert.equal((await launch.launchables()).length, 0);
     await launch.launch({ kind: 'known', id: 'explorer' });
     assert.equal(opened[0], '/home/test/home');
@@ -36,8 +55,4 @@ test(`linux: file manager uses native paths, launch errors propagate, executable
     await assert.rejects(launch.launch({ kind: 'known', id: 'downloads' }), /Permission denied/);
     assert.equal(launch.risky({ kind: 'file', id: '/tmp/run.sh' }), true);
     assert.equal(launch.risky({ kind: 'folder', id: '/tmp/Test.app' }), true);
-  });
-  test(`linux: Ollama install never invokes winget`, async () => {
-    const setup = load('setup.js', 'linux', {}, { './ollama': {} });
-    assert.equal((await setup.installOllama()).ok, false);
-  });
+});

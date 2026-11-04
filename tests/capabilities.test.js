@@ -9,37 +9,56 @@ const { FEATURES, detect, linuxSession, createCapabilities } = require('../src/m
 const make = (platform = 'linux', extra = {}) => createCapabilities({ platform, env: {}, ...extra });
 const KDE_WAYLAND = { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
 
-test('Linux: nothing system-dependent is on until an adapter reports it', () => {
+test('Linux: base features are on, dynamic features wait for adapter', () => {
   const caps = make('linux', { env: { DISPLAY: ':0' } });
-  assert.equal(FEATURES.some((name) => caps.has(name)), false);
+  
+  // Base Linux features is enabled
+  assert.equal(caps.has('appLaunch'), true);
+  assert.equal(caps.has('mediaKeys'), true);
+  assert.equal(caps.has('ollamaLaunch'), true);
+
+  // Unsupported extended linux features,
+  // witch is disabled by default
+  assert.equal(caps.has('windowTracking'), false);
+  assert.equal(caps.has('appList'), false);
+  assert.equal(caps.has('appClose'), false);
+  assert.equal(caps.has('autostart'), false);
+
   assert.deepEqual(caps.forRenderer(), {
-    windows: false, possess: false, closeApps: false, launchApps: false, mediaKeys: false, ollamaLaunch: false,
+    windows: false,
+    possess: false,
+    closeApps: false,
+    launchApps: true,
+    mediaKeys: true,
+    ollamaLaunch: true,
   });
   assert.equal(caps.session, 'x11');
 });
 
 test('Linux: the window watcher (X11 or KWin) turns window tracking on and off', () => {
   const caps = make('linux', { env: KDE_WAYLAND });
-  assert.equal(caps.session, 'xwayland'); // Capri in XWayland: the KWin script's session
-  assert.equal(caps.has('windowTracking'), false); // before the script's first update
+  assert.equal(caps.session, 'xwayland');
+  assert.equal(caps.has('windowTracking'), false);
   const heard = [];
   caps.onChange((name, value) => heard.push([name, value]));
-
-  caps.set('windowTracking', true); // startKWinWatch: onState(true) on the first update
+  // Extended linux features witch is enabled by adepters
+  caps.set('windowTracking', true);
   caps.set('windowTracking', true);
   assert.equal(caps.has('windowTracking'), true);
   assert.equal(caps.forRenderer().windows, true);
   assert.equal(caps.forRenderer().possess, true);
-  assert.equal(caps.forRenderer().mediaKeys, false); // the rest stays off
+  // Adapter features like "closeApps" are disabled when isn't KDE environment
+  assert.equal(caps.forRenderer().closeApps, false);
 
-  caps.set('windowTracking', false); // the script went silent, or the bus was lost
+  caps.set('windowTracking', false);
   assert.equal(caps.forRenderer().possess, false);
   assert.deepEqual(heard, [['windowTracking', true], ['windowTracking', false]]);
 });
 
-test('Linux: nothing system-dependent yet, autostart included', () => {
+test('Linux: autostart and window tracking are off initially', () => {
   const caps = make('linux', { env: { DISPLAY: ':0' } });
-  assert.equal(FEATURES.some((name) => caps.has(name)), false);
+  assert.equal(caps.has('autostart'), false);
+  assert.equal(caps.has('windowTracking'), false);
   assert.equal(caps.session, 'x11');
 });
 
@@ -50,30 +69,6 @@ test('Linux session: X11, XWayland, native Wayland, none', () => {
   assert.equal(linuxSession({ WAYLAND_DISPLAY: 'wayland-0' }), 'wayland');
   assert.equal(linuxSession({}), null);
 });
-
-//test('an adapter turns a feature on or off, listeners hear only real changes', () => {
-//  const caps = make('darwin');
-//  const heard = [];
-//  const off = caps.onChange((name, value) => heard.push([name, value]));
-//  caps.set('windowTracking', true); // e.g. a macOS watcher that started (CAPRI-09)
-//  caps.set('windowTracking', true);
-//  assert.equal(caps.has('windowTracking'), true);
-//  assert.equal(caps.forRenderer().windows, true);
-//  assert.equal(caps.forRenderer().possess, true);
-//  caps.set('windowTracking', false); // it gave up
-//  assert.equal(caps.forRenderer().possess, false);
-//  off();
-//  caps.set('windowTracking', true);
-//  assert.deepEqual(heard, [['windowTracking', true], ['windowTracking', false]]);
-//});
-
-//test('unknown features are refused, the renderer only gets booleans', () => {
-//  const caps = make('win32');
-//  assert.throws(() => caps.has('teleport'), /unknown capability/);
-//  assert.throws(() => caps.set('teleport', true), /unknown capability/);
-//  for (const value of Object.values(caps.forRenderer())) assert.equal(typeof value, 'boolean');
-//  assert.equal(caps.all().mediaKeys, true);
-//});
 
 function load(file, platform, electron, extra = {}, globals = {}) {
   const module = { exports: {} };

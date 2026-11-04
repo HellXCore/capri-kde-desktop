@@ -159,7 +159,7 @@ test('snapshot: other workspaces, sticky windows, minimized ones, own pid, panel
   assert.equal(x11.buildSnapshot({ root: { ...x11.parseRoot(ROOT), active: 0x7 }, infos, rects }).taskbar, false);
 });
 
-test('snapshot: her other windows (the demo terminal, same pid) are seats, as on Windows', () => {
+test('snapshot: Capri other windows (the demo terminal, same pid) are seats, as on Windows', () => {
   const infos = parsedInfos();
   const rects = x11.parseTree(TREE);
   // the demo terminal: another window of Capri's process, on top
