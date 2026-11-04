@@ -53,14 +53,20 @@
 - [x] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
 - [x] `[UI-01]` Greating, splashscreen
 - [x] `[UI-02]` Basic overlay animation
-- [x] `[UI-03]` Drag/click/throwing interaction
+- [x] `[UI-03]` Sleping mask, waiting
+- [x] `[UI-04]` Drag/click/throwing interaction
 - [x] `[UI-05]` Window tracking, sitting on other windows
+- [x] `[UI-06]` Summon, jump to cursor
+- [x] `[UI-07]` CAPRI_AGY_HOOK
 - [x] `[SCR-04]` Capri is watching your desktop (Implement linux screenshot tools)
+- [x] `[SCR-05]` Game detecting
+- [x] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
+- [x] `[FILES-01]` File search
+- [x] `[FILES-05]` Opening folders
+- [x] `[INP-02]` CTRL+ALT+C
 - [x] `[DB-01]` UNKNOWN_ERROR
 
 ### 🟦 В ПРОЦЕССЕ // COMPILING
-- [ ] `[UI-03]` Sleping mask, waiting
-- [ ] `[UI-04]` Summon, jump to cursor
 - [ ] `[NET-01]` UNKNOWN_ERROR
 - [ ] `[NET-02]` Assistant hooks
 - [ ] `[NET-02]` Chat with an already installed Ollama or API provider
@@ -68,19 +74,14 @@
 - [ ] `[SCR-02]` Tracking the mouse position, possess cursor with the eyes
 - [ ] `[SCR-03]` Following the mouse position
 - [ ] `[SCR-04]` Feel desktop load
-- [ ] `[SCR-05]` Game detecting
-- [ ] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
-- [ ] `[INP-02]` CTRL+ALT+C
+- [ ] `[AI-03]` Reminders
 
 ### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
 - [ ] `[BOOT-01]` Linux login startup
 - [ ] `[SEC-05]` Secure password(API_KEYS) store throw kwallet
-- [ ] `[FILES-01]` File search
-- [ ] `[FILES-05]` Opening folders
-- [ ] `[UI-04]` CAPRI_AGY_HOOK
 - [ ] `[AI-01]` Claude co-work
 - [ ] `[AI-02]` UNKNOWN_ERROR
-- [ ] `[AI-03]` Reminders
+- [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 - [ ] `[CROSS-01]` UNKNOWN_ERROR
 
 ### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
