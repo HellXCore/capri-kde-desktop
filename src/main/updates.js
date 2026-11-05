@@ -1,15 +1,13 @@
 'use strict';
 
-// Updates of the installed app from the fork's GitHub Releases (CAPRI-11, docs/UPDATES.md).
+// Updates from the GitHub Releases (CAPRI-11, docs/UPDATES.md).
 //
 // The controller below holds what her settings window and her menu show: disabled, idle, checking,
 // current, available, downloading, downloaded, installing, error (network, signature, other). It
 // never says "current" without a check that succeeded, runs one operation at a time, and installs
 // only a download that was verified, after an explicit confirmation. What it checks with is a
-// transport: electron-updater's autoUpdater for Windows (NSIS) and the AppImage, the same check
-// without download for a .deb (her package manager updates her), and on macOS electron-updater's
-// check with our own verified download and bundle swap (mac-update.js), since Squirrel.Mac refuses
-// an update without a Developer ID signature. No Electron in the controller: it is tested with fakes.
+// transport: electron-updater's autoUpdater for the AppImage, the same check without download for
+// a .deb (her package manager updates her). No Electron in the controller: it is tested with fakes.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -19,7 +17,6 @@ const REPO = 'capri-desktop';
 const RELEASES = `https://github.com/${OWNER}/${REPO}/releases`;
 const TAG_PREFIX = 'v';
 const STARTUP_DELAY = 45 * 1000;
-// the local test feed (scripts/updater-smoke.js): only a build made by it, with this mark in its package.json
 const TEST_FEED = /^http:\/\/127\.0\.0\.1:\d+\/?$/;
 
 // the release page of a tag (vX.Y.Z), or of a version
@@ -51,13 +48,11 @@ function updateError(err, extra = {}) {
   const code = String(err?.code ?? '');
   let category = 'other';
   let reason = null;
-  if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|code ?sign|integrity|bundle (id|version|check)/i.test(message)) {
+  if (code === 'ERR_CHECKSUM_MISMATCH' || /sha512|sha256|checksum|signature|integrity/i.test(message)) {
     category = 'signature';
   } else if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|socket hang up|timed? ?out|offline|network|status code 5\d\d|\b50[234]\b/i.test(message)
     || /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)$/.test(code)) {
     category = 'network';
-  } else if (code === 'ERR_CAPRI_LOCATION') {
-    reason = 'location';
   } else if (['ERR_UPDATER_LATEST_VERSION_NOT_FOUND', 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS'].includes(code)) {
     reason = 'feed'; // nothing published with update files yet (or a release without them)
   }
@@ -105,14 +100,22 @@ class UpdateController {
 
   set(status) {
     this.status = status;
-    if (status.kind !== 'downloading') this.log(status.kind === 'error' ? `error (${status.category}): ${status.error}` : `${status.kind}${status.version ? ` ${status.version}` : ''}`);
+    if (status.kind !== 'downloading') {
+      this.log(status.kind === 'error' ? `error (${status.category}): ${status.error}` : `${status.kind}${status.version ? ` ${status.version}` : ''}`);
+    }
     this.onChange(this.view());
   }
 
   // what the window and the menu are given: plain data
   view() {
     const offer = this.update && { version: this.update.version, notes: this.update.notes || '', page: releasePage(this.update.tag, this.update.version) };
-    return { ...(offer || {}), ...this.status, current: this.current, mode: this.mode, canDownload: Boolean(this.update?.download) && this.mode === 'install' };
+    return {
+      ...(offer || {}),
+      ...this.status,
+      current: this.current,
+      mode: this.mode,
+      canDownload: Boolean(this.update?.download) && this.mode === 'install',
+    };
   }
 
   async check() {
@@ -140,12 +143,17 @@ class UpdateController {
 
   async download() {
     const update = this.update;
-    if (this.busy || this.mode !== 'install' || !update?.download || this.status.kind !== 'available') return this.view();
+    // allowed downloading when the status is "available" or retrying after an "error."
+    const canStart = this.status.kind === 'available' || this.status.kind === 'error';
+    if (this.busy || this.mode !== 'install' || !update?.download || !canStart) return this.view();
+
     this.busy = true;
     const version = update.version;
     this.set({ kind: 'downloading', version, received: 0, total: 0 });
     try {
-      await update.download((received, total) => this.set({ kind: 'downloading', version, received: Number(received) || 0, total: Number(total) || 0 }));
+      await update.download((received, total) => {
+        this.set({ kind: 'downloading', version, received: Number(received) || 0, total: Number(total) || 0 });
+      });
       this.set({ kind: 'downloaded', version });
     } catch (err) {
       this.set(updateError(err, { version }));
@@ -256,7 +264,7 @@ function readFeed(file, { testBuild = false, readFile = fs.readFileSync } = {}) 
   } catch {
     return null;
   }
-  const field = (name) => (text.match(new RegExp(`^${name}:\\s*['"]?([^'"\\n]+?)['"]?\\s*$`, 'm')) || [])[1] || null;
+  const field = (name) => (text.match(new RegExp(`^${name}:\\s*['"]?([^'"\\r\\n]+?)['"]?\\s*$`, 'm')) || [])[1] || null;
   const provider = field('provider');
   if (provider === 'github' && field('owner') === OWNER && field('repo') === REPO) return { provider };
   if (provider === 'generic' && testBuild && TEST_FEED.test(field('url') || '')) return { provider, test: true };
@@ -271,8 +279,8 @@ function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
   if (smoke) return { disabled: 'smoke' };
   if (!packaged) return { disabled: 'dev' };
   if (!feed) return { disabled: 'feed' };
-  if (platform === 'linux') return env.APPIMAGE ? { mode: 'install', kind: 'appimage' } : { mode: 'notify', kind: 'package' };
-  return { disabled: 'platform' };
+  if (platform !== 'linux') return { disabled: 'platform' };
+  return env.APPIMAGE ? { mode: 'install', kind: 'appimage' } : { mode: 'notify', kind: 'package' };
 }
 
 // --- Electron wiring (main.js) ----------------------------------------------------------------
@@ -296,16 +304,17 @@ function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) =>
   autoUpdater.allowPrerelease = false;
   autoUpdater.allowDowngrade = false;
   autoUpdater.fullChangelog = false;
-  // its warnings only (its errors are the controller's to log, once, redacted)
-  autoUpdater.logger = { info: () => {}, debug: () => {}, warn: (msg) => log(`warn: ${redact(msg?.message ?? msg)}`), error: () => {} };
-  autoUpdater.on('error', () => {}); // failures are the controller's to report (an unheard 'error' would throw)
-  let transport;
-  if (mode.mode === 'notify') {
-    transport = notifyTransport(autoUpdater);
-  } else {
-    transport = updaterTransport(autoUpdater);
-  }
+  autoUpdater.logger = {
+    info: () => {},
+    debug: () => {},
+    warn: (msg) => log(`warn: ${redact(msg?.message ?? msg)}`),
+    error: () => {},
+  };
+  autoUpdater.on('error', () => {});
+  
+  const transport = mode.mode === 'notify' ? notifyTransport(autoUpdater) : updaterTransport(autoUpdater);
   const controller = new UpdateController({ transport, mode: mode.mode, current: app.getVersion(), onChange, log });
+
   log(`${mode.kind} (${feed.test ? 'local test feed' : `github ${OWNER}/${REPO}`})`);
   // once, unless a check was already asked for in the settings by then
   setTimeout(() => controller.status.kind === 'idle' && controller.check(), STARTUP_DELAY).unref?.();

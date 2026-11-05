@@ -1,10 +1,11 @@
 'use strict';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const {
   UpdateController, updateError, plainNotes, redact, releasePage, isReleasePage,
-  updaterTransport, notifyTransport, macTransport, readFeed, updateMode,
+  updaterTransport, notifyTransport, readFeed, updateMode,
 } = require('../src/main/updates');
 
 const offer = (extra = {}) => ({ version: '0.2.0', notes: '<p>Fixes &amp; more</p>', tag: 'v', download: async (p) => p(5, 10), install: async () => {}, ...extra });
@@ -137,11 +138,10 @@ test('notify mode (a .deb) shows the version and its page but downloads nothing'
 test('errors are sorted by kind and carry no query strings or stacks', () => {
   assert.equal(updateError(new Error('getaddrinfo ENOTFOUND github.com')).category, 'network');
   assert.equal(updateError(new Error('HttpError: 503 Service Unavailable')).category, 'network');
-  assert.equal(updateError(new Error('Update bundle version mismatch: 0.1.0 instead of 0.2.0')).category, 'signature');
-  assert.equal(updateError(Object.assign(new Error('x'), { code: 'ERR_CAPRI_LOCATION' })).reason, 'location');
+  assert.equal(updateError(new Error('sha512 checksum mismatch')).category, 'signature');
   assert.equal(updateError(new Error('EACCES')).category, 'other');
-  const message = redact('failed https://objects.githubusercontent.com/a/b.zip?X-Amz-Signature=secret&token=1 here\n    at foo (bar.js:1)');
-  assert.equal(message, 'failed https://objects.githubusercontent.com/a/b.zip here');
+  const message = redact('failed https://objects.githubusercontent.com/a/b.AppImage?X-Amz-Signature=secret&token=1 here\n    at foo (bar.js:1)');
+  assert.equal(message, 'failed https://objects.githubusercontent.com/a/b.AppImage here');
   assert.doesNotMatch(redact('Cannot parse releases feed: x,\nXML:\n<feed>secret</feed>'), /feed>/);
 });
 
@@ -189,7 +189,7 @@ function fakeUpdater({ result, downloadError = null } = {}) {
   return u;
 }
 
-test('Windows/AppImage transport: check, download with progress, quitAndInstall silent and relaunching', async () => {
+test('AppImage transport: check, download with progress, quitAndInstall silent and relaunching', async () => {
   const u = fakeUpdater({ result: { isUpdateAvailable: true, updateInfo: { version: '0.2.0', tag: 'v0.2.0', releaseNotes: 'Notes' } } });
   const progress = [];
   const c = new UpdateController({ transport: updaterTransport(u), onChange: (v) => v.kind === 'downloading' && progress.push([v.received, v.total]) });
@@ -266,13 +266,7 @@ test('an installer electron-updater cannot start (only an error event) is an err
   assert.equal(u.listenerCount('error'), 1);
 });
 
-test('a bundle that fails its check (not one app, not signed, a symlink) is a signature error', () => {
-  for (const message of ['Update bundle check failed: expected one app, found 2', 'Update bundle check failed: the app is not signed', 'Update bundle check failed: the app is not a folder']) {
-    assert.equal(updateError(new Error(message)).category, 'signature', message);
-  }
-});
-
-test('the repository builds read this fork\'s GitHub releases, never a test feed', () => {
+test('the repository builds read this GitHub releases, never a test feed', () => {
   const pkg = require('../package.json');
   assert.equal(pkg.capriUpdaterTest, undefined);
   assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'HellXCore', 'capri-desktop']]);

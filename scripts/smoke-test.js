@@ -8,8 +8,6 @@ const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const packaged = args.find((a) => !a.startsWith('--'));
-// macOS package: its window helper found and running (windows.js logs it)
-const expectWindows = args.includes('--expect-window-tracking');
 const executable = packaged ? path.resolve(packaged) : require('electron');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-'));
 const env = { ...process.env, CAPRI_SMOKE_DATA: data };
