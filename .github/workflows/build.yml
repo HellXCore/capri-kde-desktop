@@ -41,7 +41,7 @@ jobs:
         run: npm test
 
       - name: Package installers (.deb & .AppImage)
-        run: npm run dist:linux
+        run: npm run dist
 
       - name: Launch packaged app (Linux X11 smoke test)
         run: |
