@@ -1,6 +1,6 @@
 {
   "name": "capri-desktop",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "desktopName": "com.arasaka.capricorn",
   "description": "Capri, the Project Capricorn construct, living on your desktop and narrating what Claude Code is doing.",
   "author": "mochiiwuff",
