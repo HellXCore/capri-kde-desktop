@@ -51,7 +51,7 @@ test('release remains a draft, targets the built commit, and never replaces a pu
   const sha = 'a'.repeat(40);
   assert.equal(draftPayload(null, '0.1.0', sha).draft, true);
   assert.equal(draftPayload({ draft: true }, '0.1.0', sha).target_commitish, sha);
-  assert.equal(draftPayload(null, '0.1.0', sha).tag_name, 'fork-v0.1.0');
+  assert.equal(draftPayload(null, '0.1.0', sha).tag_name, 'v0.1.0');
   assert.throws(() => draftPayload({ draft: false }, '0.1.0', sha), /already published/);
   assert.throws(() => draftPayload(null, 'bad version', sha), /x.y.z/);
 });
