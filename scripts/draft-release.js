@@ -58,11 +58,54 @@ function checkUpdateFeeds(dir, version, installers) {
 
 function draftPayload(existing, version, sha) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Use a stable x.y.z package version');
-  if (existing && !existing.draft) throw new Error(`fork-v${version} is already published; bump package.json and package-lock.json`);
+  if (existing && !existing.draft) throw new Error(`v${version} is already published; bump package.json and package-lock.json`);
+
   const notes = path.join(__dirname, '..', 'docs', 'releases', `${version}.md`);
+
+  const defaultBody = `## Release v${version}
+
+### New
+- 
+
+### Fixed
+- 
+
+---
+
+### Install (Linux)
+
+#### AppImage (portable)
+1. Download the \`.AppImage\` file from the attachments below.
+2. Make the file executable and run it:
+\`\`\`bash
+chmod +x Capri-${version}-*.AppImage
+./Capri-${version}-*.AppImage
+\`\`\`
+>  *Note for Ubuntu 22.04+:* If the application fails to start, you need to install the FUSE library:  
+> \`sudo apt install libfuse2\`
+
+#### .deb package (Ubuntu / Debian / Linux Mint)
+1. Download the \`.deb\` package.
+2. Install using the command:
+\`\`\`bash
+sudo apt install ./Capri-${version}-*.deb
+\`\`\`
+
+---
+<details>
+<summary> Build information </summary>
+
+- **Target OS:** Linux x64
+- **Commit:** \`${sha}\`
+</details>
+`;
+
   return {
-    tag_name: `fork-v${version}`, target_commitish: sha, name: `Capri v${version}`, draft: true,
-    body: `${fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8').trim() : `Cross-platform Capri ${version} build. See the repository documentation for platform limitations.`}\n\nBuild commit: ${sha}\n`,
+    tag_name: `v${version}`,
+    target_commitish: sha,
+    name: `Capri v${version}`,
+    draft: true,
+    body: fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8').trim() : defaultBody,
   };
 }
 
