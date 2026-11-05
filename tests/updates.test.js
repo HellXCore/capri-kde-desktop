@@ -130,7 +130,7 @@ test('notify mode (a .deb) shows the version and its page but downloads nothing'
   await c.check();
   assert.equal(c.status.kind, 'available');
   assert.equal(c.view().canDownload, false);
-  assert.equal(c.view().page, 'https://github.com/HellXCore/capri-desktop/releases/tag/v0.2.0');
+  assert.equal(c.view().page, 'https://github.com/HellXCore/capri-kde-desktop/releases/tag/v0.2.0');
   await c.download();
   assert.equal(c.status.kind, 'available');
 });
@@ -149,9 +149,9 @@ test('release notes become plain text, and only this repository\'s release pages
   assert.equal(plainNotes('<h2>New</h2><ul><li>One &lt;b&gt;</li><li>Two&#33;</li></ul><script>x</script>'), 'New\n• One <b>\n• Two!');
   assert.equal(plainNotes([{ version: '0.2.0', note: 'A' }]), '0.2.0\nA');
   assert.equal(plainNotes(null), '');
-  assert.equal(releasePage(null, '0.3.0'), 'https://github.com/HellXCore/capri-desktop/releases/tag/v0.3.0');
+  assert.equal(releasePage(null, '0.3.0'), 'https://github.com/HellXCore/capri-kde-desktop/releases/tag/v0.3.0');
   assert.equal(isReleasePage(releasePage('v0.3.0')), true);
-  assert.equal(isReleasePage('https://github.com/HellXCore/capri-desktop/releases/latest'), true);
+  assert.equal(isReleasePage('https://github.com/HellXCore/capri-kde-desktop/releases/latest'), true);
   assert.equal(isReleasePage('https://evil.example/releases/tag/x'), false);
   assert.equal(isReleasePage('file:///etc/passwd'), false);
 });
@@ -165,8 +165,8 @@ test('which installations update, and how', () => {
 
 test('only this repository\'s GitHub feed, or a loopback feed in a test build, is accepted', () => {
   const read = (text) => () => text;
-  assert.deepEqual(readFeed('x', { readFile: read('owner: HellXCore\nrepo: capri-desktop\nprovider: github\nupdaterCacheDirName: capri-desktop-updater\n') }), { provider: 'github' });
-  assert.equal(readFeed('x', { readFile: read('owner: someone\nrepo: capri-desktop\nprovider: github\n') }), null);
+  assert.deepEqual(readFeed('x', { readFile: read('owner: HellXCore\nrepo: capri-kde-desktop\nprovider: github\nupdaterCacheDirName: capri-desktop-updater\n') }), { provider: 'github' });
+  assert.equal(readFeed('x', { readFile: read('owner: someone\nrepo: capri-kde-desktop\nprovider: github\n') }), null);
   const loopback = 'provider: generic\nurl: http://127.0.0.1:47832/\n';
   assert.equal(readFeed('x', { readFile: read(loopback) }), null); // an ordinary build never takes it
   assert.deepEqual(readFeed('x', { readFile: read(loopback), testBuild: true }), { provider: 'generic', test: true });
@@ -269,8 +269,8 @@ test('an installer electron-updater cannot start (only an error event) is an err
 test('the repository builds read this GitHub releases, never a test feed', () => {
   const pkg = require('../package.json');
   assert.equal(pkg.capriUpdaterTest, undefined);
-  assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'HellXCore', 'capri-desktop']]);
+  assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'HellXCore', 'capri-kde-desktop']]);
   // app-update.yml as electron-builder writes it from that
-  const yml = 'owner: HellXCore\nrepo: capri-desktop\nprovider: github\nreleaseType: release\nupdaterCacheDirName: capri-desktop-updater\n';
+  const yml = 'owner: HellXCore\nrepo: capri-kde-desktop\nprovider: github\nreleaseType: release\nupdaterCacheDirName: capri-desktop-updater\n';
   assert.deepEqual(readFeed('x', { readFile: () => yml }), { provider: 'github' });
 });

@@ -383,7 +383,7 @@ You need [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
 git clone https://github.com/HellXCore/capri-kde-desktop.git
-cd capri-desktop
+cd capri-kde-desktop
 npm install
 npm start
 ```

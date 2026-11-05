@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const OWNER = 'HellXCore';
-const REPO = 'capri-desktop';
+const REPO = 'capri-kde-desktop';
 const RELEASES = `https://github.com/${OWNER}/${REPO}/releases`;
 const TAG_PREFIX = 'v';
 const STARTUP_DELAY = 45 * 1000;

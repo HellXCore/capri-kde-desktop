@@ -9,7 +9,7 @@ const { GitHubProvider } = require('electron-updater/out/providers/GitHubProvide
 const { HttpError } = require(require.resolve('builder-util-runtime', { paths: [require.resolve('electron-updater')] })); // electron-updater's own copy
 
 const OWNER = 'HellXCore';
-const REPO = 'capri-desktop';
+const REPO = 'capri-kde-desktop';
 const BASE = `https://github.com/${OWNER}/${REPO}/releases`;
 
 const feed = (tags) => `<?xml version="1.0" encoding="UTF-8"?>
