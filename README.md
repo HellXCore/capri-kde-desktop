@@ -1,4 +1,4 @@
-# PROJECT_CAPRICORN_KDE_Desktop // SYSTEM_STATUS
+# PROJECT_CAPRICORN_KDE_DESKTOP // SYSTEM_STATUS
 
 [![License: PolyForm NC 1.0.0](https://img.shields.io/badge/License-PolyForm%20NC%201.0.0-orange.svg)](LICENSE)
 [![Platform: Wayland](https://img.shields.io/badge/Platform-Wayland%20%2F%20KDE%20Plasma-orange.svg)]()
@@ -7,13 +7,15 @@
 > `STATUS: ACTIVE`  
 > `ENCRYPTION: QUANTUM_READY`  
 > `LOCATION: NIGHT_CITY_NET`  
-> `OVERRIDE:` This is a fork of [Libes6/capri-desktop](https://github.com/Libes6/capri-desktop) for my  **CachyOS** setup running **KDE Plasma 6.8**.
+> `OVERRIDE:` Based on [Libes6/capri-desktop](https://github.com/Libes6/capri-desktop) for running in **KDE Plasma 6.8**.
 
 ---
 
-### Key changes in this fork:
-* Running with high compatibility under **XWayland**.
-* Maximum functionality with Plasma 6.8 Wayland and XWayland sessions.
+### Key changes in this progect:
+* Running with extended compatibility under **X11** (legacy).
+* Running with basic compatibility under **XWayland**(mainteined).
+* Running wuth full compatibility in **KDE Plasma 6** XWayland sessions.
+* Full compatibility in **KDE Plasma 6** native Wayland sessions is under development.
 
 ### Other version:
 * Original [windows version](https://github.com/mochiiwuff/capri-desktop)
@@ -27,8 +29,8 @@
 
 ```
 [ PROTOCOL: INITIALIZED ]
-[ PROGRESS: 21% // SYSTEM_STABLE ]
-[ █████░░░░░░░░░░░░░░░░░░░░ ]
+[ PROGRESS: 67% // SYSTEM_STABLE ]
+[ ███████████████░░░░░░░░░ ]
 ```
 
 ---
@@ -39,9 +41,9 @@
 | :--- | :---: | :--- |
 | **`[ COMPLATED ]`** | 🟪 | `[LINUX_OLD_API]` // Native X11 support* |
 | **`[ COMPLETED ]`** | 🟪 | `[NET_CONTROL_HOOKS]` // Interction @user with Capri |
-| **`[IN_PROGRESS]`** | 🟦 | `[CORP_SPY_MODULE]` // Interction Capri with desktop |
+| **`[ COMPLETED ]`** | 🟪 | `[CORP_SPY_MODULE]` // Interction Capri with desktop |
 | **`[IN_PROGRESS]`** | 🟦 | `[PROTOCOL_XWAYLAND_UI]` // Full XWayland support |
-| **`[ BACKLOG ]`** | 🟥 | `[PROTOCOL_WAYLAND_UI]` // Native Wayland support |
+| **`[IN_PROGRESS]`** | 🟦 | `[PROTOCOL_WAYLAND_UI]` // Native Wayland support |
 | **`[DEPRECATED]`** | ⬛ | `[MULTI_PLATFORM_API]` // Multi-platform support |
 
 ---
@@ -58,6 +60,7 @@
 - [x] `[UI-05]` Window tracking, sitting on other windows
 - [x] `[UI-06]` Summon, jump to cursor
 - [x] `[UI-07]` CAPRI_AGY_HOOK
+- [x] `[NET-02]` Chat with an already installed Ollama or API provider
 - [x] `[SCR-04]` Capri is watching your desktop (Implement linux screenshot tools)
 - [x] `[SCR-05]` Game detecting
 - [x] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
@@ -69,19 +72,19 @@
 ### 🟦 В ПРОЦЕССЕ // COMPILING
 - [ ] `[NET-01]` UNKNOWN_ERROR
 - [ ] `[NET-02]` Assistant hooks
-- [ ] `[NET-02]` Chat with an already installed Ollama or API provider
 - [ ] `[SCR-01]` User detecting, tracking activity
 - [ ] `[SCR-02]` Tracking the mouse position, possess cursor with the eyes
 - [ ] `[SCR-03]` Following the mouse position
 - [ ] `[SCR-04]` Feel desktop load
 - [ ] `[AI-03]` Reminders
+- [ ] `[AI-01]` Claude co-work
+- [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 
 ### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
 - [ ] `[BOOT-01]` Linux login startup
 - [ ] `[SEC-05]` Secure password(API_KEYS) store throw kwallet
-- [ ] `[AI-01]` Claude co-work
+- [ ] `[UI-07]` Сaress capri
 - [ ] `[AI-02]` UNKNOWN_ERROR
-- [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 - [ ] `[CROSS-01]` UNKNOWN_ERROR
 
 ### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
@@ -96,9 +99,9 @@
 [ SYSTEM_VERSION: v0.2.2-alpha ]
 ```
 
-## Fork builds and releases
+## Builds and releases
 
-- Linux x64: `npm run dist` → AppImage and DEB. Requires XWayland; native Wayland is not supported yet because global cursor tracking is required.
+- Linux x64: `npm run dist` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported yet because global cursor tracking is required.
 
 Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
 
@@ -118,8 +121,8 @@ glitches, comments on every action, comes to find you when it needs your permiss
 [ PROTOCOL: INITIALIZED ]
 [ SELFTESTING.. ]
 [ -UNKNOWN_ERROR- ]
-[ PROGRESS: 21% // SYSTEM_STABLE ]
-[ █████░░░░░░░░░░░░░░░░░░░░ ]
+[ PROGRESS: 67% // SYSTEM_STABLE ]
+[ ███████████████░░░░░░░░░ ]
 ```
 
 - **When she starts**: she grabs your screen. Its edges crackle red, her left hand slams onto its edge, then her
@@ -561,9 +564,22 @@ tools/build-sprite.py    rebuilds the sprite from the original cut-out (Python +
 tools/build-cutins.py    cuts the cut-ins and her faces out of frames of the show
 tools/build-intro.py     cuts her intro's close-ups out of their background, all the same way
 src/main/                Electron: full-screen transparent click-through window, tray, local HTTP bridge
-  windows.js / .ps1      where the other windows are (Windows only), so she can sit on them
   ollama.js              her chat: the local model through Ollama, or one of its cloud models
   apps.js                closing an app you asked her to close (after your click)
+src/main/linux           
+  apps-linux.js          implementing application opening and closure in Linux (apps.js)
+  baloo.js               implementing of file search in KDE Plasma (files.js)
+  dbus-mini.js           communication of protocol between kwin-bridge and kwin-windows
+  desktop-entires.js     an application list view in Linux
+  devices.js             plug-in device tracking in Linux
+  games.js               a list of running applications in Linux
+  kwin-bridge.js         data handler from the KWin module
+  kwin-windows.qml       KWin module
+  media.js               implementing media keys control in Linux
+  screenshot.js          implementing viewing screen content in Linux
+  x11.js                 Linux X11 window tracking
+  x11-input.js           Input region for the overlay on X11 / XWayland
+  x11-watch.js           where the other windows are (Windows only), so she can sit 
 src/renderer/js/
   sprite.js              WebGL shader: head tilt, mane flare, sitting, smears, afterimages, colors, glitch
   acting.js              the exposure sheets: every move, drawing by drawing
