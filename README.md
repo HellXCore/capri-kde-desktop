@@ -19,7 +19,7 @@
 
 ### Other version:
 * Original [windows version](https://github.com/mochiiwuff/capri-desktop)
-* Fork [multiplatform version](https://github.com/Libes6/capri-desktop)
+* [multiplatform version](https://github.com/Libes6/capri-desktop)
 
 ---
 
@@ -50,7 +50,7 @@
 
 ## 💾 RECON_DATA // SUBSYSTEM_DETAILS
 
-### 🟪 РЕАЛИЗОВАНО // STABLE_BUILDS
+### 🟪 IMPLEMENTED // STABLE_BUILDS
 - [x] `[CORE-01]` UNKNOWN_ERROR
 - [x] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
 - [x] `[UI-01]` Greating, splashscreen
@@ -63,13 +63,14 @@
 - [x] `[NET-02]` Chat with an already installed Ollama or API provider
 - [x] `[SCR-04]` Capri is watching your desktop (Implement linux screenshot tools)
 - [x] `[SCR-05]` Game detecting
-- [x] `[SEC-06]` foreground-app detection, installed-app discovery/closing and media keys remain
+- [x] `[SEC-06]` foreground-app detection, installed-app discovery/closing
+- [x] `[SEC-06]` Media keys
 - [x] `[FILES-01]` File search
 - [x] `[FILES-05]` Opening folders
 - [x] `[INP-02]` CTRL+ALT+C
 - [x] `[DB-01]` UNKNOWN_ERROR
 
-### 🟦 В ПРОЦЕССЕ // COMPILING
+### 🟦 IN_PROGRESS // COMPILING
 - [ ] `[NET-01]` UNKNOWN_ERROR
 - [ ] `[NET-02]` Assistant hooks
 - [ ] `[SCR-01]` User detecting, tracking activity
@@ -80,14 +81,14 @@
 - [ ] `[AI-01]` Claude co-work
 - [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 
-### 🟥 НЕ РЕАЛИЗОВАНО // QUEUED
+### 🟥 NOT_IMPLEMENTED // QUEUED
 - [ ] `[BOOT-01]` Linux login startup
 - [ ] `[SEC-05]` Secure password(API_KEYS) store throw kwallet
 - [ ] `[UI-07]` Сaress capri
 - [ ] `[AI-02]` UNKNOWN_ERROR
 - [ ] `[CROSS-01]` UNKNOWN_ERROR
 
-### ⬛ НЕ ПЛАНИРУЕТСЯ // DROPPED
+### ⬛ DEPRECATED // DROPPED
 - [ ] `[LEGACY-67]` WINDOWS_ENVIRONMENT
 - [ ] `[CORP-02]` MACOS_ENVIRONMENT
 - [ ] `[CORP-05]` UNKNOWN_ERROR
@@ -98,12 +99,32 @@
 [ EOF // КОНЕЦ ПАКЕТА ДАННЫХ ]
 [ SYSTEM_VERSION: v0.2.2-alpha ]
 ```
+## Install
 
-## Builds and releases
+### Quick start (Linux, prebuilt binaries)
 
-- Linux x64: `npm run dist` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported yet because global cursor tracking is required.
+Grab the latest AppImage from the [Releases page](https://github.com/HellXCore/capri-kde-desktop/releases).
 
-Use Node.js 22.12+ and `npm ci`. `npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
+### From the source (Linux, developers)
+
+You need [Node.js](https://nodejs.org) 22.12+ and `npm ci`
+
+```bash
+git clone https://github.com/HellXCore/capri-kde-desktop.git
+cd capri-kde-desktop
+npm install
+npm start
+```
+
+Linux x64: `npm run dist` → AppImage and DEB. Requires X11 or XWayland; native Wayland is not supported.
+You need to use the `--ozone-platform=x11` flag when launching it in a Wayland session.
+
+<details>
+<summary>Builds</summary>
+
+`npm start` launches from source. `npm test` checks hooks, platform dispatch and release safeguards. `npm run test:smoke` starts the real app with isolated temporary settings and exits once the renderer has loaded its assets and initialized. Smoke tests use reduced motion. Headless Linux CI runs a compositing window manager and software WebGL; normal launches retain automatic GPU selection. It does not install hooks, call AI providers or change your settings.
+
+</details>
 
 # Capri
 
@@ -255,10 +276,28 @@ in her own language. Enter sends, Esc closes.
 
 The first time, she sets it up with you, with buttons, no terminal:
 
-- **On my PC** (free, nothing leaves your machine): she installs [Ollama](https://ollama.com) for you (with winget,
-  Windows' own installer), wakes it up, and downloads a model while a bar fills up: gemma3 (3.3 GB, better in languages
-  other than English) or llama3.2 (2 GB, for smaller PCs). On a tiny model (1B and under) she warns you it may talk
-  nonsense and offers a better one.
+- **On my PC** (free, nothing leaves your machine): You need to install [Ollama](https://ollama.com), wakes it up
+  and downloads a model while a bar fills up: gemma3 (3.3 GB, better in languages other than English) or llama3.2 
+  (2 GB, for smaller PCs). On a tiny model (1B and under) she warns you it may talk nonsense and offers a better one.
+  **How download Ollama?** You need to Install Ollama via terminal:
+
+    • Arch Linux:
+    ```txt
+      sudo pacman -S ollama
+    ```
+    > (for NVIDIA GPU: sudo pacman -S ollama-cuda)  
+    > (for AMD GPU:    sudo pacman -S ollama-rocm)
+
+    • Ubuntu / Debian / Fedora / Others:
+    ```txt
+      curl -fsSL https://ollama.com/install.sh | sh
+    ```
+    • After installation, enable and start the service:
+    ```txt
+      sudo systemctl enable --now ollama
+    ```
+    • Then retry in the app.
+
   Signed in to Ollama? She also offers its free cloud models (`beam:cloud` today): nothing to download, much bigger
   than what fits on a PC, but your messages go through Ollama's servers. Not signed in, her menu › **AI model** has
   **Sign in to Ollama (free cloud models)…**. If a cloud model stops answering (signed out, out of free use), she
@@ -277,7 +316,9 @@ edit files without asking. **Forget our conversations** clears what she remember
 **It's AI.** Her replies are written by the model, not by the show's writers: it's a fan version of her, and the chat
 panel says so every time.
 
-**What she can do on your PC** (Windows), when you ask her in the chat:
+**What she can do on your PC**, 
+<details>
+<summary>when you ask her in the chat:</summary>
 
 - **Open an app or a game**: anything in your Start menu (Store apps like Spotify included), your Steam and Epic
   games ("open Spotify", "launch Brawlhalla"). Named in your own words, it opens right away; if only her AI came up
@@ -317,6 +358,8 @@ on her own, every 8 to 15 minutes, when you're there and you've switched windows
 time, she tells you where the picture goes: to her chat's AI. With an AI on your PC, nothing leaves it; with an online
 one, the picture goes to that service. She never keeps the picture, and her chat remembers what she said for a while.
 It takes a model that can read pictures: gemma3 on your PC, Gemini or OpenAI online (not llama3.2, she'll tell you).
+
+</details>
 
 ### Make her yours
 
@@ -369,24 +412,6 @@ She only catches the mouse on her actual body (pixel-precise): the rest of the s
 
 She speaks **French, English, Spanish, Brazilian Portuguese and Russian**, and picks the language of your system on her
 own. You can choose another one in her menu.
-
-## Install
-
-### Quick start (Linux, no coding)
-
-Prebuilt binaries
-grab the latest AppImage from the [Releases page](https://github.com/HellXCore/capri-kde-desktop/releases).
-
-### From the source (Linux, developers)
-
-You need [Node.js](https://nodejs.org) 20 or newer.
-
-```bash
-git clone https://github.com/HellXCore/capri-kde-desktop.git
-cd capri-kde-desktop
-npm install
-npm start
-```
 
 ### Hook her up to Claude Code by hand
 
@@ -455,13 +480,6 @@ named like this (`.mp3`, `.wav`, `.ogg` or `.m4a`):
 | `remind` | a reminder comes due |
 | `jealous` | her jealous hiss |
 
-## Is it safe?
-
-- All of the code is right here. The installer is built from it with `npm run dist`; you can build your own.
-- Nothing leaves your PC (see below): she only talks to Claude Code through a hook on `127.0.0.1`.
-- What she changes on your system: the hook in `~/.claude/settings.json` (a backup is written first, and you can remove
-  it from her menu), and a startup entry only if you tick "Start with Windows". She uninstalls like any AppImage
-
 ## FAQ
 
 - **windows, Mac?** No installer here(see above).
@@ -482,7 +500,15 @@ named like this (`.mp3`, `.wav`, `.ogg` or `.m4a`):
 - **She only floats around and says idle things.** That's normal until Claude Code does something. If it never reacts,
   check her menu says "Claude Code hooks: installed", then close Claude Code completely and open it again.
 
-## What leaves your machine
+## Is it safe?
+
+- All of the code is right here. The installer is built from it with `npm run dist`; you can build your own.
+- Nothing leaves your PC (see below): she only talks to Claude Code through a hook on `127.0.0.1`.
+- What she changes on your system: the hook in `~/.claude/settings.json` (a backup is written first, and you can remove
+  it from her menu), and a startup entry only if you tick "run with startup". She uninstalls like any AppImage.
+
+<details>
+<summary>What leaves your machine</summary>
 
 Nothing. The hook only keeps what the display needs (tool name, file path, command, the start of your prompt,
 Claude's last message up to 6,000 characters so she can show it to you, all truncated) and sends it to `127.0.0.1` only.
@@ -498,6 +524,7 @@ it's never kept or sent anywhere.
 
 When she looks at your screen (only when you ask, or if you ticked *Look at my screen now and then*), a picture of the
 screen goes to her chat's AI: on your PC with Ollama (a local model), to the online service otherwise. It's never written to disk.
+</details>
 
 ## Art direction
 
@@ -553,9 +580,11 @@ The goal: she should feel like she stepped out of the anime, not like a widget.
   and the eyes shut as chevrons while she sleeps.
 - **Type**: Chakra Petch (bevelled cuts, like her shards) + JetBrains Mono for data.
 
-If Windows is set to "Show animations: off", she sticks to fades.
+If desktop is set to "Show animations: off", she sticks to fades.
 
 ## How it's built
+<details>
+<summary>for developers</summary>
 
 ```
 hooks/capri-hook.js      run by Claude Code, reads the event on stdin and posts it to the app
@@ -575,8 +604,8 @@ src/main/linux
   games.js               a list of running applications in Linux
   kwin-bridge.js         data handler from the KWin module
   kwin-windows.qml       KWin module
-  media.js               implementing media keys control in Linux
-  screenshot.js          implementing viewing screen content in Linux
+  media.js               media keys control in Linux
+  screenshot.js          viewing screen content in Linux
   x11.js                 Linux X11 window tracking
   x11-input.js           Input region for the overlay on X11 / XWayland
   x11-watch.js           where the other windows are (Windows only), so she can sit 
@@ -594,7 +623,7 @@ src/renderer/js/
   bond.js                how close she is to you, growing over time, and her jealousy of other AIs
   look.js                she looks at your screen: asking first, the scan, what her AI says about it
   pc.js                  your PC as she feels it: the processor, the battery, the network, USB sticks, games
-  files.js               finding your files (Windows search index), screenshots
+  files.js               finding your files, screenshots
   lines.js               what she says (FR / EN / ES / PT / RU)
   chip.js                her mask: while she sleeps, and bottom left when you put her away
   voice.js               the sounds
@@ -604,12 +633,13 @@ To hack on it: `npm run dev` turns on debug routes on the bridge (`/debug/captur
 `/debug/testwin` opens test windows she can sit on, one per name, `/debug/mouse` moves and clicks a stand-in pointer
 over Capri's window, without touching the real one, `/debug/type` types in her chat, `/debug/menu` lists her menu and
 can click an item of it).
-`npm run dist` builds the Windows installer in `dist/`.
+`npm run dist` builds the Linux installer in `dist/`.
+</details>
 
 ## Credits and rights
 
-* Original Creator: [mochiiwoffy](https://github.com/mochiiwuff/) — author of the original [Windows version](https://github.com/mochiiwuff/capri-desktop).
-* Cross-platform Adaptor: [Libes6](https://github.com/Libes6/) — developer of the [Multiplatform fork](https://github.com/Libes6/capri-desktop).
+* [mochiiwoffy](https://github.com/mochiiwuff/) — author of the original [Windows version](https://github.com/mochiiwuff/capri-desktop).
+* [Libes6](https://github.com/Libes6/) — developer of the [Multiplatform fork](https://github.com/Libes6/capri-desktop).
 * The Muse & Construct: Capri — for breaking into our desktops, glitching under XWayland, the heap of errors under Wayland, and keeping us company while Claude Code does the heavy lifting.
 
 Capri / Project Capricorn, Cyberpunk and Cyberpunk: Edgerunners belong to CD PROJEKT RED, Studio Trigger and Netflix.
@@ -621,5 +651,6 @@ If a rights holder wants them removed, open an issue.
 her, change her and share what you made, for free. Selling Capri, or anything made from her code (keys, subscriptions,
 paid access, paid orders), is not allowed. Versions up to 0.4.3 were under the MIT License.
 
-Fonts: Chakra Petch and JetBrains Mono, under the SIL Open Font License, via Fontsource.
+> Note: This repository is based on version v.0.4.4 of the original project.
 
+Fonts: Chakra Petch and JetBrains Mono, under the SIL Open Font License, via Fontsource.

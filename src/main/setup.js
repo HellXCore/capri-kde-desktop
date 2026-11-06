@@ -47,7 +47,25 @@ async function ollamaState() {
 
 // onLine(text) for what it prints.
 function installOllama(onLine) {
-  return Promise.resolve({ ok: false, error: 'Install Ollama from https://ollama.com/download, then retry.' });
+  const message = [
+    'Install Ollama via terminal:',
+    '',
+    '• Arch Linux:',
+    '    sudo pacman -S ollama',
+    '    (for NVIDIA GPU: sudo pacman -S ollama-cuda)',
+    '    (for AMD GPU:    sudo pacman -S ollama-rocm)',
+    '',
+    '• Ubuntu / Debian / Fedora / Others:',
+    '    curl -fsSL https://ollama.com/install.sh | sh',
+    '',
+    '• After installation, enable and start the service:',
+    '    sudo systemctl enable --now ollama',
+    '',
+    'Then retry in the app.'
+  ].join('\n');
+
+  onLine?.(message);
+  return Promise.resolve({ ok: false, error: message });
 }
 
 // Wakes Ollama up (its app, else `ollama serve` in the background) and waits for it to answer.
