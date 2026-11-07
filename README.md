@@ -172,7 +172,7 @@ glitches, comments on every action, comes to find you when it needs your permiss
   the summary (`12 actions · 3 files changed · 2m 14s`) and Claude's last sentence.
 - **When Claude answers and you're on another window**: she shows you its whole answer, in a wider panel that
   scrolls (paragraphs, lists and code kept). It goes away when you're back on Claude's window, or when you click it.
-  Claude's window is the one you typed your prompt in. Windows only, like the window tracking.
+  Claude's window is the one you typed your prompt in. Linux KDE desktop environment only, like the window tracking.
 - **The rest of the time**: she floats, her mane sways and sheds shards, she drifts from one corner to another,
   turns around and cocks her head when your mouse comes near (or, little menace, zaps it with red lightning and a sly grin),
   looks up at the satellite, and falls asleep after 10 quiet minutes.
@@ -304,8 +304,7 @@ The first time, she sets it up with you, with buttons, no terminal:
   goes back to a model on your PC.
 - **Online, no account**: Pollinations, nothing to set up.
 - **I have a key**: Groq or Gemini (both have a free tier), OpenRouter, OpenAI, Mistral or DeepSeek. You paste your
-  key in her panel and she checks it. It's kept on your PC, encrypted with your Windows account, and only ever sent to
-  that service.
+  key in her panel and she checks it. It's kept on your PC, and only ever sent to that service.
 
 Her menu › **AI model** lets you switch later: **Set it up with her…**, or straight to a service and a model, LM Studio
 (`:1234`), llama.cpp or vLLM (`:8080`), any OpenAI-compatible server (**API key or address…**), or **Claude Code**
@@ -324,11 +323,11 @@ panel says so every time.
   games ("open Spotify", "launch Brawlhalla"). Named in your own words, it opens right away; if only her AI came up
   with it, you get a button first.
 - **Your folders and your desktop**: "open my downloads", "open File Explorer", "open the recycle bin", or a file,
-  folder or shortcut on your desktop, by its name. Anything that would run a program or a script (.exe, .bat, .ps1…)
+  folder or shortcut on your desktop, by its name. Anything that would run a program or a script (.sh, .bin, .exe)
   always goes behind a button.
 - **Finding your files** ("find my resume", "where's my After Effects project?", "find my last video and open the
   folder"): by name or by kind of file (an After Effects project is a .aep), across your whole user folder, by name and by
-  what's in them (with Windows' search index), with buttons to open what she found or show its folder. Nothing leaves
+  what's in them (with KDE baloo' search index), with buttons to open what she found or show its folder. Nothing leaves
   your PC.
 - **Searching the web** ("search the weather in Paris on Google") and **taking a screenshot** ("take a screenshot":
   without her in it, saved in Pictures › Screenshots). She knows the date and time, too.
@@ -340,9 +339,9 @@ panel says so every time.
   search for it.
 - **A website**: always behind a button showing where it goes.
 - **Close an app** ("close AM Music", "can you shut Discord down?"): a button with the app's name, and nothing happens
-  until you click it. She closes it the way its own close button does, so it can still ask you to save. If it only
-  hid in the tray, she offers **Force quit**, again only on your click (unsaved work is lost then). She never closes
-  Windows' own pieces, Claude, Ollama or herself.
+  until you click it. She closes (with KDE helpers) it the way its own close button does, so it can still ask you to save.
+  If it only hid in the tray, she offers **Force quit**, again only on your click (unsaved work is lost then). 
+  She never closes Linux' own pieces, Claude, Ollama or herself.
 - **Reminders** ("remind me in 20 minutes to take out the laundry", "remind me tomorrow at 9 to call the garage"): the
   time and the text are read straight off your message, even on a tiny model, and a **Cancel** button shows under her
   answer. Without a time, she asks when. When it's due, she comes and finds you (on the screen you're on, even put
