@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer,
+  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer, nativeTheme,
 } = require('electron');
 const { randomUUID } = require('node:crypto');
 
@@ -17,7 +17,8 @@ const OVERLAY_TITLE = 'capri-overlay';
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const { watchPower } = require('./power');
-const { createInputRegion } = require('./linux/x11-input');
+const { createInputRegion } = require('./linux/input-region');
+const { createInputRegion: createXShape } = require('./linux/x11-input');
 const { createCapabilities, ozonePlatform } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
@@ -67,7 +68,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let overlay = null;
-let inputRegion = null; // X11 input shape (null: not available, old setShape fallback)
+let inputRegion = null; // where she takes the mouse (linux/input-region.js: X11 shape, or native Wayland's own way)
 let tray = null;
 let trayMenu = null; // Also what she opens when you right-click her
 let settings = null; // Capri settings window (settings-window.js), made in main()
@@ -240,12 +241,20 @@ function createOverlay() {
   // Not focusable from the start. A click on must not make KWin activate the overlay 
   // (listening the keyboard input is only while Capri's chat is open, overlay:focus)
   if (LINUX_MANAGED) overlay.setFocusable(false);
-  // Linux (X11/XWayland): the window is drawn in full, only the input shape is limited.
-  // Empty before the first render, so the window doesn't intercept clicks across the screen.
-  // Native Wayland window (no X id to give it)
-  inputRegion = caps.session === 'wayland' ? null : createInputRegion(overlay);
-  if (inputRegion) inputRegion.set([], 1);
-  else overlay.setShape([{ x: -100, y: -100, width: 1, height: 1 }]); // fallback:
+
+  // Linux: the window is drawn in full and takes the mouse only where she is. How that is said depends
+  // on the session: X11 and XWayland an exact input shape, native Wayland the window following the
+  // pointer (which the KWin script reports); empty before the first render, so the window does not
+  // intercept clicks across the screen (linux/input-region.js).
+  inputRegion = createInputRegion({
+    overlay,
+    session: caps.session,
+    pointerAvailable: /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || ''),
+    nativeTheme,
+    xshape: createXShape,
+  });
+  console.log(`[capri] input region: ${inputRegion.kind} (${caps.session}, Electron ${process.versions.electron})`);
+
   overlay.loadURL('capri://app/src/renderer/index.html');
   // Always shown: put away, she's still there as her biochip in the corner. Sized again first:
   // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
@@ -918,28 +927,15 @@ function registerIpc() {
   ipcMain.on('overlay:shape', (_e, payload) => {
   if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
   const { rects, dpr } = payload || {};
-  const list = Array.isArray(rects) ? rects : [];
-  if (inputRegion) {
-    inputRegion.set(list, dpr);
-    return;
-  }
-  // fallback without koffi/libXext: Electron's bounding shape (it clips drawing as well)
-  const valid = list
-    .map((r) => ({
-      x: Math.round(r.x),
-      y: Math.round(r.y),
-      width: Math.max(1, Math.round(r.width)),
-      height: Math.max(1, Math.round(r.height)),
-    }))
-    .filter((r) => r.width > 0 && r.height > 0);
-  overlay.setShape(valid.length ? valid : [{ x: -100, y: -100, width: 1, height: 1 }]);
+  inputRegion?.set(Array.isArray(rects) ? rects : [], dpr);
 });
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
     // KDE Wayland: XWayland only follows the pointer over X windows, so Electron's own 
     // point goes stale over native Wayland ones; the KWin script knows where it really is
     const p = windowWatch?.cursor?.() || screen.getCursorScreenPoint();
-    const b = overlay.getBounds();
+    // native Wayland: a client does not know where its window is, KWin does
+    const b = windowWatch?.origin?.() || overlay.getBounds();
     const inside = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
     return { x: p.x - b.x, y: p.y - b.y, inside, display: displayAt(p).id };
   });
@@ -1458,11 +1454,28 @@ function main() {
         if (windowWatch?.source === 'kwin') {
           caps.set('appList', ok);
           caps.set('appClose', ok);
-          if (ok) globalShortcut.unregister('Control+Alt+C');
-          else if (!globalShortcut.isRegistered('Control+Alt+C')) globalShortcut.register('Control+Alt+C', () => toggleVisible());
+          // native Wayland: her window takes the mouse only while the pointer is said to be over her; if it
+          // never is, nothing reaches her, and the log says why that may be
+          if (ok && inputRegion?.kind === 'toggle') {
+            setTimeout(() => {
+              const s = inputRegion?.stats?.();
+              if (s && s.pointers === 0) {
+                console.warn('[capri] input region: the pointer was never reported in her window\'s coordinates, so she takes no clicks. '
+                  + 'The KWin script may not find her window: see `journalctl --user -b | grep -i capri-windows`');
+              }
+            }, 8000);
+          }
+          // (not registered with Electron at all while the script runs: see below)
+          if (ok) {
+            if (globalShortcut.isRegistered('Control+Alt+C')) globalShortcut.unregister('Control+Alt+C');
+          } else if (!globalShortcut.isRegistered('Control+Alt+C')) {
+            globalShortcut.register('Control+Alt+C', () => toggleVisible()); // the script is gone: Electron's own
+          }
         }
       },
       onCommand: (name) => name === 'toggle' && toggleVisible(),
+      onPointer: (p) => inputRegion?.pointer?.(p), // native Wayland: her window takes the mouse while it is over her
+      area: () => overlayArea().area, // and where it should be, which only the KWin script can see to
       onUpdate: (data) => {
         // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
         if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();
@@ -1476,7 +1489,10 @@ function main() {
       onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
       onDebug: DEV ? debugHandler : null,
     });
-    globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    // KDE Wayland: the KWin script owns Ctrl+Alt+C. Not registered here first and taken back later: on
+    // native Wayland Electron asks the desktop portal for it, that session is made after the fact, and
+    // closing it at once is an error from the portal (and a script that never starts gives it back, above)
+    if (!LINUX_MANAGED) globalShortcut.register('Control+Alt+C', () => toggleVisible());
     llm.restoreClaude(readMemory().claude);
     if (!SMOKE) refreshModels(); // for her menu's model list
     if (!SMOKE) setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask

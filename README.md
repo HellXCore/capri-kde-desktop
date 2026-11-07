@@ -12,14 +12,18 @@
 ---
 
 ### Key changes in this progect:
-* Running with extended compatibility under **X11** (legacy).
-* Running with basic compatibility under **XWayland**(mainteined).
-* Running wuth full compatibility in **KDE Plasma 6** XWayland sessions.
-* Full compatibility in **KDE Plasma 6** native Wayland sessions is under development.
+
+<pre>
+- <b>X11 (Legacy):</b>               Extended compatibility support
+- <b>XWayland (Compatibility):</b>   Basic compatibility support
+- <b>Wayland (Native):</b>           Support unavailable due to technical limitations
+- <b>KDE Plasma 6 XWayland:</b>      Full compatibility (Maintained)
+- <b>KDE Plasma 6 Wayland:</b>       Full compatibility (Testing)
+</pre>
 
 ### Other version:
-* Original [windows version](https://github.com/mochiiwuff/capri-desktop)
-* [multiplatform version](https://github.com/Libes6/capri-desktop)
+## * Original [windows version](https://github.com/mochiiwuff/capri-desktop)
+## * [multiplatform version](https://github.com/Libes6/capri-desktop)
 
 ---
 
@@ -29,8 +33,8 @@
 
 ```
 [ PROTOCOL: INITIALIZED ]
-[ PROGRESS: 67% // SYSTEM_STABLE ]
-[ ███████████████░░░░░░░░░ ]
+[ PROGRESS: 72% // SYSTEM_STABLE ]
+[ █████████████████░░░░░░░ ]
 ```
 
 ---
@@ -50,7 +54,7 @@
 
 ## 💾 RECON_DATA // SUBSYSTEM_DETAILS
 
-### 🟪 IMPLEMENTED // STABLE_BUILDS
+### 🟣 IMPLEMENTED // STABLE_BUILDS
 - [x] `[CORE-01]` UNKNOWN_ERROR
 - [x] `[LEGACY-89]` LINUX_X11_ENVIRONMENT (without extended features)
 - [x] `[UI-01]` Greating, splashscreen
@@ -68,9 +72,10 @@
 - [x] `[FILES-01]` File search
 - [x] `[FILES-05]` Opening folders
 - [x] `[INP-02]` CTRL+ALT+C
+- [x] `[CORP-04]` KDE_WAYLAND_ENVIRONMENT
 - [x] `[DB-01]` UNKNOWN_ERROR
 
-### 🟦 IN_PROGRESS // COMPILING
+### 🔵 IN_PROGRESS // COMPILING
 - [ ] `[NET-01]` UNKNOWN_ERROR
 - [ ] `[NET-02]` Assistant hooks
 - [ ] `[SCR-01]` User detecting, tracking activity
@@ -79,16 +84,16 @@
 - [ ] `[SCR-04]` Feel desktop load
 - [ ] `[AI-03]` Reminders
 - [ ] `[AI-01]` Claude co-work
-- [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 
-### 🟥 NOT_IMPLEMENTED // QUEUED
+### 🔴 NOT_IMPLEMENTED // QUEUED
 - [ ] `[BOOT-01]` Linux login startup
 - [ ] `[SEC-05]` Secure password(API_KEYS) store throw kwallet
 - [ ] `[UI-07]` Сaress capri
 - [ ] `[AI-02]` UNKNOWN_ERROR
 - [ ] `[CROSS-01]` UNKNOWN_ERROR
+- [ ] `[CORP-03]` WAYLAND_ENVIRONMENT
 
-### ⬛ DEPRECATED // DROPPED
+### ⚫ DEPRECATED // DROPPED
 - [ ] `[LEGACY-67]` WINDOWS_ENVIRONMENT
 - [ ] `[CORP-02]` MACOS_ENVIRONMENT
 - [ ] `[CORP-05]` UNKNOWN_ERROR
@@ -142,8 +147,8 @@ glitches, comments on every action, comes to find you when it needs your permiss
 [ PROTOCOL: INITIALIZED ]
 [ SELFTESTING.. ]
 [ -UNKNOWN_ERROR- ]
-[ PROGRESS: 67% // SYSTEM_STABLE ]
-[ ███████████████░░░░░░░░░ ]
+[ PROGRESS: 72% // SYSTEM_STABLE ]
+[ █████████████████░░░░░░░ ]
 ```
 
 - **When she starts**: she grabs your screen. Its edges crackle red, her left hand slams onto its edge, then her
