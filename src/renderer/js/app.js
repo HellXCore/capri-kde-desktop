@@ -249,7 +249,12 @@ async function boot() {
     if (now - lastMove < WATCH_MS * 1.5 || now - rearmedAt < 20000) return;
     rearmedAt = now;
     host.rearm();
-  }, config.platform === 'linux' ? 50 : WATCH_MS);
+  }, WATCH_MS);
+  // Linux: the faster beat only looks at her shapes again (panel, chip and mask come and go without a
+  // mouse event, and the window ignores the mouse then). sendShape drops what did not change, so this
+  // is no IPC; where the pointer really is, is only needed every WATCH_MS to follow it to a screen.
+  pause.every(() => scheduleUpdateShapes(), 50);
+
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (chip.visible && chip.contains(e.clientX, e.clientY, 0)) host.openMenu();
