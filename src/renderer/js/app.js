@@ -112,6 +112,21 @@ async function boot() {
     host.setShape(rects, dpr);
   };
 
+  // Her body's rectangle on a grid of 8 px, grown outwards: walking, it changes a dozen times a second
+  // instead of on every drawn frame, each change being an IPC and an X request (at most 7 px of her
+  // window around her takes the pointer that would have gone to the window below).
+  const GRID = 8;
+  const snapOut = (r) => {
+    const x0 = Math.floor(r.x / GRID) * GRID;
+    const y0 = Math.floor(r.y / GRID) * GRID;
+    return {
+      x: x0,
+      y: y0,
+      width: Math.ceil((r.x + r.width) / GRID) * GRID - x0,
+      height: Math.ceil((r.y + r.height) / GRID) * GRID - y0,
+    };
+  };
+
   const updateShapes = () => {
     shapeRaf = 0;
     if (config.platform !== 'linux') return;
@@ -129,7 +144,7 @@ async function boot() {
 
     // 1. Capri’s Body
     if (!capri.hidden && !capri.stowed && !capri.dormant && capri.p.alpha > 0.1) {
-      rects.push(capri.bounds());
+      rects.push(snapOut(capri.bounds()));
     }
     // 2. Dialog panel
     if (panel.visible) {

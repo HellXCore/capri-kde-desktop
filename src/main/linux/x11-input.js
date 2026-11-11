@@ -63,13 +63,20 @@ function createInputRegion(win) {
   const x = load();
   if (!x) return null;
   let last = { rects: [], dpr: 1 };
+  let appliedKey = ''; // what the server was last told: the same again is not sent
+  let xidOf = 0;
 
-  const apply = () => {
+  // force: the server may have dropped it (resized, moved to another screen, remapped): said again
+  const apply = (force = false) => {
     if (win.isDestroyed()) return;
-    const xid = win.getNativeWindowHandle().readUInt32LE(0); // an X Window id fits in 32 bits
+    if (force || !xidOf) xidOf = win.getNativeWindowHandle().readUInt32LE(0); // an X Window id fits in 32 bits
+    const xid = xidOf;
     const { width, height } = win.getBounds(); // DIP; the window's pixels are DIP * dpr
     const dpr = last.dpr || 1;
     const rects = toDevice(last.rects, dpr, Math.round(width * dpr), Math.round(height * dpr));
+    const key = `${xid}|${width}x${height}|${JSON.stringify(rects)}`;
+    if (!force && key === appliedKey) return;
+    appliedKey = key;
     // no rectangles: an empty input region, the whole window is click-through
     x.XShapeCombineRectangles(x.display, xid, SHAPE_INPUT, 0, 0, rects.length ? rects : null, rects.length, SHAPE_SET, UNSORTED);
     x.XFlush(x.display);
@@ -82,7 +89,7 @@ function createInputRegion(win) {
       apply();
     },
     // after the window was resized, moved to another screen or (re)mapped: the server may have dropped it
-    reapply: apply,
+    reapply: () => apply(true),
     close() {
       // the display connection is shared by every overlay; closed with the process
     },
