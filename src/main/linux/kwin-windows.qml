@@ -66,6 +66,8 @@ Item {
     property int missing: 0          // polls in a row she was not found (-1: said so)
     property var movingWin: null     // the window the user is dragging or resizing (light channel: Move)
     property var moveGeo: null       // its latest geometry, not sent yet
+    property string netKey: ""       // what the 500 ms net saw last time (see safetyNet)
+    property int netTick: 0
 
     // ---------- what to send ----------
 
@@ -502,6 +504,38 @@ Item {
     }
 
     // ---------- when to send ----------
+
+    // The net under the signals (the workspace in view, the order of the stack, the screens have none
+    // of their own). Looking at everything (collect + JSON) twice a second, in KWin's own thread, is a
+    // lot for "nothing changed": a short key of what the signals cannot say goes first, and the full
+    // look only follows when it changed, or every fourth beat (2 s) whatever it says.
+    function fingerprint() {
+        const order = Workspace.stackingOrder;
+        let k = "";
+        for (let i = 0; i < order.length; i++) {
+            const w = order[i];
+            if (!w || w.deleted) continue;
+            k += String(w.internalId) + (w.minimized ? "m" : "") + (w.hidden ? "h" : "") + ",";
+        }
+        const a = Workspace.activeWindow;
+        k += "|" + (a ? String(a.internalId) : "");
+        k += "|" + (Workspace.currentDesktop ? Workspace.currentDesktop.x11DesktopNumber : "");
+        const screens = Workspace.screens;
+        for (let i = 0; i < screens.length; i++) {
+            const g = screens[i].geometry;
+            k += "|" + Math.round(g.x) + "," + Math.round(g.y) + "," + Math.round(g.width) + "," + Math.round(g.height);
+        }
+        return k;
+    }
+
+    function safetyNet() {
+        if (root.movingWin) return;
+        root.netTick = (root.netTick + 1) % 4;
+        const key = root.fingerprint();
+        if (root.netTick !== 0 && key === root.netKey) return;
+        root.netKey = key;
+        root.flush();
+    }
 
     function flush() {
         // while a window is dragged only Move talks (id,x,y,w,h); moveFinished sends the full one
