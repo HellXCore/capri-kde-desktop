@@ -62,12 +62,13 @@ function draftPayload(existing, version, sha) {
 
   const notes = path.join(__dirname, '..', 'docs', 'releases', `${version}.md`);
 
-  const defaultBody = `## Release v${version}
-
-### New
+  const defaultBody = `### Added
 - 
 
-### Fixed
+### Fixes
+- 
+
+### Improved
 - 
 
 ---
@@ -78,17 +79,19 @@ function draftPayload(existing, version, sha) {
 1. Download the \`.AppImage\` file from the attachments below.
 2. Make the file executable and run it:
 \`\`\`bash
-chmod +x Capri-${version}-*.AppImage
-./Capri-${version}-*.AppImage
+chmod +x Capri-${version}-linux-x86_64.AppImage
+./Capri-${version}-linux-x86_64.AppImage
 \`\`\`
 >  *Note for Ubuntu 22.04+:* If the application fails to start, you need to install the FUSE library:  
 > \`sudo apt install libfuse2\`
+>  *Note for users of a Wayland session outside of KDE Plasma:* you should use:  
+> \`./Capri-0.4.0-linux-x86_64.AppImage --ozone-platform=x11\`
 
 #### .deb package (Ubuntu / Debian / Linux Mint)
 1. Download the \`.deb\` package.
 2. Install using the command:
 \`\`\`bash
-sudo apt install ./Capri-${version}-*.deb
+sudo apt install ./Capri-${version}-amd64.deb
 \`\`\`
 
 ---

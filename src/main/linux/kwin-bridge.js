@@ -134,6 +134,28 @@ function parseCursor(text) {
   return at;
 }
 
+// "id,x,y,w,h" (KWin's logical pixels, whole numbers) -> { id, x, y, w, h }, or null. The light
+// channel of a window being dragged or resized (kwin-windows.qml: Move).
+function parseMove(text) {
+  const m = /^(\d{1,12}),(-?\d{1,6}),(-?\d{1,6}),(\d{1,6}),(\d{1,6})$/.exec(String(text));
+  if (!m) return null;
+  const [id, x, y, w, h] = m.slice(1).map(Number);
+  return w > 0 && h > 0 ? { id, x, y, w, h } : null;
+}
+
+// The snapshot with one window's rectangle replaced; null if there is nothing to change (the window
+// is not in the last snapshot, or it did not move).
+function applyMove(snap, mv, outputs, units) {
+  const i = snap.wins.findIndex((w) => w.id === mv.id);
+  if (i < 0) return null;
+  const r = toXPixels({ x: mv.x, y: mv.y, w: mv.w, h: mv.h }, outputs, units);
+  const old = snap.wins[i];
+  if (old.x === r.x && old.y === r.y && old.w === r.w && old.h === r.h) return null;
+  const wins = snap.wins.slice();
+  wins[i] = { ...old, ...r, max: false }; // a window being dragged is not maximized
+  return { ...snap, wins };
+}
+
 // session: capabilities.linuxSession(). getSelf(): { pid, title } of the overlay (its pid and the
 // window title it was given), to leave it out. scriptDir: a writable real directory.
 // Same contract as startX11Watch: onSnapshot(snap) physical-pixel snapshots, onState(ok).
@@ -165,6 +187,31 @@ function startKWinWatch({
   let cursor = null;   // the pointer, KWin's logical pixels
   const queue = [];    // commands for the script, taken by its next Poll
 
+  // The light channel (Move): while one window is dragged, only its rectangle arrives. Latest wins:
+  // a Move that comes before the previous one went out replaces it (at most one per MOVE_MIN_MS).
+  const MOVE_MIN_MS = 8;
+  let pendingMove = null;
+  let moveTimer = null;
+  let lastMoveAt = 0;
+  const flushMove = () => {
+    moveTimer = null;
+    const mv = pendingMove;
+    pendingMove = null;
+    lastMoveAt = Date.now();
+    if (!mv || !lastSnap) return;
+    const next = applyMove(lastSnap, mv, outputs, units);
+    if (!next) return;
+    lastSnap = next; // so a device change in between does not bring the old place back
+    emit(next);
+  };
+  const move = (text) => {
+    const mv = parseMove(text);
+    if (!mv) return;
+    pendingMove = mv;
+    if (moveTimer) return;
+    moveTimer = setTimeout(flushMove, Math.max(0, MOVE_MIN_MS - (Date.now() - lastMoveAt)));
+  };
+
   const fail = (why) => {
     if (stopped) return;
     log.error(`[capri] kwin watch: ${why}`);
@@ -179,6 +226,10 @@ function startKWinWatch({
       const front = payload.front || {};
       snap.game = gameOf(isNum(front.pid) ? front.pid : 0, typeof front.cls === 'string' ? front.cls : '');
       lastSnap = snap;
+      // a full snapshot always overrides a Move still waiting
+      clearTimeout(moveTimer);
+      moveTimer = null;
+      pendingMove = null;
       windows = windowsOf(payload);
       outputs = list(payload.outputs);
       if (!running) {
@@ -254,6 +305,10 @@ function startKWinWatch({
     });
     bus.export(OBJECT_PATH, BUS_NAME, {
       Update: guarded('s', 's', ([text]) => [update(text)]),
+      Move: guarded('s', '', ([text]) => {
+        move(text);
+        return [];
+      }),
       Cursor: guarded('s', '', ([text]) => {
         const next = parseCursor(text);
         if (next) {
@@ -320,6 +375,7 @@ function startKWinWatch({
     stop() {
       stopped = true;
       clearTimeout(firstTimer);
+      clearTimeout(moveTimer);
       watched.stop();
       if (active === api) active = null;
       if (!bus) return;
@@ -333,4 +389,4 @@ function startKWinWatch({
 // the running watcher, or null (apps-linux.js, windows.js)
 const current = () => (active && active.ready ? active : null);
 
-module.exports = { startKWinWatch, current, fromPayload, windowsOf, parseCursor, toXPixels, BUS_NAME, OBJECT_PATH, SCRIPT_NAME };
+module.exports = { startKWinWatch, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels, BUS_NAME, OBJECT_PATH, SCRIPT_NAME };

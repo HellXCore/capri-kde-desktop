@@ -64,6 +64,8 @@ Item {
     }
     property var selfWin: null       // the overlay's window, once found
     property int missing: 0          // polls in a row she was not found (-1: said so)
+    property var movingWin: null     // the window the user is dragging or resizing (light channel: Move)
+    property var moveGeo: null       // its latest geometry, not sent yet
 
     // ---------- what to send ----------
 
@@ -502,6 +504,8 @@ Item {
     // ---------- when to send ----------
 
     function flush() {
+        // while a window is dragged only Move talks (id,x,y,w,h); moveFinished sends the full one
+        if (root.movingWin) return;
         root.ensureTop();
         const json = JSON.stringify(root.collect());
         if (json === root.lastJson) return; // nothing changed: nothing sent
@@ -524,6 +528,7 @@ Item {
         const key = String(w.internalId);
         if (root.watched[key]) return;
         root.watched[key] = true;
+        root.hookMove(w);
         const signals = [
             "frameGeometryChanged", "minimizedChanged", "desktopsChanged", "activitiesChanged",
             "fullScreenChanged", "maximizedChanged", "captionChanged", "skipTaskbarChanged",
@@ -533,7 +538,7 @@ Item {
             try {
                 const signal = w[signals[i]];
                 signal.connect(root.poke);
-                root.hooked.push(signal);
+                root.hooked.push({ s: signal, f: root.poke });
             } catch (e) {
                 // this KWin has no such signal: the poll below still catches the change
             }
@@ -545,6 +550,69 @@ Item {
         const key = String(w.internalId);
         delete root.watched[key];
         delete root.ids[key];
+        if (root.movingWin === w) {
+            root.movingWin = null;
+            root.moveGeo = null;
+        }
+    }
+
+    // ---------- the light channel: a window being dragged or resized ----------
+    // Only "id,x,y,w,h" goes out (KWin's logical pixels), at most about every 8 ms, instead of the
+    // whole desktop as JSON behind the 40 ms flush. Without these signals in this KWin nothing is
+    // connected, movingWin stays null and the full Update does all of it, as before.
+
+    function hookMove(w) {
+        const pairs = [
+            ["interactiveMoveResizeStarted", () => root.moveStarted(w)],
+            ["interactiveMoveResizeStepped", (geo) => root.moveStepped(w, geo)],
+            ["interactiveMoveResizeFinished", () => root.moveFinished(w)],
+        ];
+        for (let i = 0; i < pairs.length; i++) {
+            try {
+                const signal = w[pairs[i][0]];
+                signal.connect(pairs[i][1]);
+                root.hooked.push({ s: signal, f: pairs[i][1] });
+            } catch (e) {
+                // no such signal here
+            }
+        }
+    }
+
+    function moveStarted(w) {
+        if (root.isSelf(w)) return;
+        root.movingWin = w;
+    }
+
+    // the first step goes out at once; the ones within the next 8 ms are merged (the latest wins)
+    function moveStepped(w, geo) {
+        if (root.isSelf(w)) return;
+        root.movingWin = w;
+        root.moveGeo = geo;
+        moveIdleTimer.restart();
+        if (!moveTimer.running) {
+            root.flushMove();
+            moveTimer.start();
+        }
+    }
+
+    function flushMove() {
+        const w = root.movingWin;
+        const g = root.moveGeo;
+        if (!w || w.deleted || !g) return;
+        root.moveGeo = null;
+        moveCall.arguments = [root.idOf(w) + "," + Math.round(g.x) + "," + Math.round(g.y) + ","
+            + Math.round(g.width) + "," + Math.round(g.height)];
+        moveCall.call();
+    }
+
+    function moveFinished(w) {
+        if (!w || root.movingWin !== w) return;
+        moveTimer.stop();
+        moveIdleTimer.stop();
+        root.movingWin = null;
+        root.moveGeo = null;
+        root.lastJson = ""; // the last Move may differ from the final place (snapping, tiling)
+        root.flush();       // one full snapshot: the receiver is exact again
     }
 
     // the receiver's reply: who it is, so its own overlay is left out of the list
@@ -613,6 +681,36 @@ Item {
         text: "Capri: stow her or bring her back"
         sequence: "Ctrl+Alt+C"
         onActivated: root.command("toggle")
+    }
+
+    DBusCall {
+        id: moveCall
+        service: "org.capri.WindowBridge"
+        path: "/org/capri/WindowBridge"
+        dbusInterface: "org.capri.WindowBridge"
+        method: "Move"
+        onFailed: root.onFailed()
+    }
+
+    // the trailing edge: what came in during the 8 ms is sent now
+    Timer {
+        id: moveTimer
+        interval: 8
+        repeat: false
+        onTriggered: {
+            if (root.moveGeo) {
+                root.flushMove();
+                moveTimer.start();
+            }
+        }
+    }
+
+    // if Finished never comes (the window vanished, KWin dropped the grab) the drag is over after 1 s
+    Timer {
+        id: moveIdleTimer
+        interval: 1000
+        repeat: false
+        onTriggered: root.moveFinished(root.movingWin)
     }
 
     Timer {
@@ -691,7 +789,7 @@ Item {
     Component.onDestruction: {
         for (let i = 0; i < root.hooked.length; i++) {
             try {
-                root.hooked[i].disconnect(root.poke);
+                root.hooked[i].s.disconnect(root.hooked[i].f);
             } catch (e) {
                 // the window is gone, or the signal: nothing left to take back
             }
