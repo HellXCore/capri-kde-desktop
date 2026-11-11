@@ -22,8 +22,8 @@
 </pre>
 
 ### Other version:
-## * Original [windows version](https://github.com/mochiiwuff/capri-desktop)
-## * [multiplatform version](https://github.com/Libes6/capri-desktop)
+* Original [windows version](https://github.com/mochiiwuff/capri-desktop)
+* [multiplatform version](https://github.com/Libes6/capri-desktop)
 
 ---
 
