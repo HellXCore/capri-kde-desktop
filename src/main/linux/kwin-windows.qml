@@ -529,10 +529,11 @@ Item {
         if (root.watched[key]) return;
         root.watched[key] = true;
         root.hookMove(w);
+        root.hookCaption(w);
         const signals = [
             "frameGeometryChanged", "minimizedChanged", "desktopsChanged", "activitiesChanged",
-            "fullScreenChanged", "maximizedChanged", "captionChanged", "skipTaskbarChanged",
-            "hiddenChanged", "stackingOrderChanged", "activeChanged", "outputChanged",
+            "fullScreenChanged", "maximizedChanged", "skipTaskbarChanged", "hiddenChanged",
+            "stackingOrderChanged", "activeChanged", "outputChanged",
         ];
         for (let i = 0; i < signals.length; i++) {
             try {
@@ -575,6 +576,22 @@ Item {
             } catch (e) {
                 // no such signal here
             }
+        }
+    }
+    
+    // A caption changes as often as a terminal prints or a browser loads a tab, and all of it used to
+    // wake the full collect. The payload only has a title in two places: the AIs the window in front
+    // is (its caption), and telling the overlay from the other windows (her title). So only those.
+    function hookCaption(w) {
+        try {
+            const signal = w.captionChanged;
+            const f = () => {
+                if (w === Workspace.activeWindow || !root.selfWin || root.isSelf(w)) root.poke();
+            };
+            signal.connect(f);
+            root.hooked.push({ s: signal, f: f });
+        } catch (e) {
+            // no such signal here: the 500 ms net below catches the change
         }
     }
 
