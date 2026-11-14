@@ -12,9 +12,12 @@
 const { execFile } = require('node:child_process');
 const x11 = require('./x11');
 
-const INTERVAL = 250;     // ms between polls
-const FULL_EVERY = 4000;  // ms: every window's properties read again (state changes without a move)
-const GIVE_UP = 5;        // failed polls in a row before giving up
+const INTERVAL = 250;       // ms between polls
+const IDLE_INTERVAL = 500;  // ms between polls once IDLE_AFTER polls in a row found nothing new
+const IDLE_AFTER = 12;      // (3 s); the first change brings INTERVAL back
+const FULL_EVERY = 4000;    // ms: every window's properties read again (state changes without a move)
+const READ_AT_ONCE = 8;     // xprop processes running at the same time
+const GIVE_UP = 5;          // failed polls in a row before giving up
 
 function execTool(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -23,6 +26,20 @@ function execTool(cmd, args) {
       else resolve(String(stdout));
     });
   });
+}
+
+// fn on every item, at most `limit` at a time (a process for each: 80 of them at once is a fork storm)
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 // session: capabilities.linuxSession(). self: { id } of the overlay. onSnapshot(snap) gets
@@ -45,7 +62,9 @@ function startX11Watch({
   let lastJson = '';
   let lastActive = null;
   let lastDesktop = null;
-  let lastFull = 0;
+  let rollAt = 0;      // where the rolling re-read of every window is
+  let unchanged = 0;   // polls in a row that found nothing new
+  const every = () => (unchanged >= IDLE_AFTER ? IDLE_INTERVAL : INTERVAL);
   const cache = new Map(); // id -> { info, key (geometry when read), at }
 
   const giveUp = (why) => {
@@ -71,19 +90,25 @@ function startX11Watch({
     const root = x11.parseRoot(rootOut);
     if (!root) throw Object.assign(new Error('no EWMH window manager (_NET_CLIENT_LIST_STACKING missing)'), { ewmh: false });
     const rects = x11.parseTree(treeOut);
-    const now = Date.now();
-    const full = now - lastFull >= FULL_EVERY || root.desktop !== lastDesktop;
-    if (full) lastFull = now;
-
-    // read again: new windows, moved or resized ones, the one in front and the one that was
+    // read again: new windows, moved or resized ones, and the one in front and the one that was when
+    // that changed. Not on every poll: a state change of the front window is a change of its
+    // geometry or of which one is in front, or the rolling re-read below finds it. Every window is
+    // read again within FULL_EVERY, a few each poll instead of all of them at once; all of them
+    // when the workspace changed.
     const ids = root.stacking.slice(0, 80);
+    const desktopChanged = root.desktop !== lastDesktop;
+    const activeChanged = root.active !== lastActive;
+    const per = Math.max(1, Math.ceil((ids.length * every()) / FULL_EVERY));
+    const rolling = new Set();
+    for (let n = 0; n < per && n < ids.length; n++) rolling.add(ids[(rollAt + n) % ids.length]);
+    rollAt = ids.length ? (rollAt + per) % ids.length : 0;
     const stale = ids.filter((id) => {
       const c = cache.get(id);
       const r = rects.get(id);
       const key = r ? `${r.x},${r.y},${r.w},${r.h}` : '';
-      return full || !c || c.key !== key || id === root.active || id === lastActive;
+      return desktopChanged || !c || c.key !== key || rolling.has(id) || (activeChanged && (id === root.active || id === lastActive));
     });
-    const fresh = await Promise.all(stale.map(props));
+    const fresh = await mapLimit(stale, READ_AT_ONCE, props);
     stale.forEach((id, i) => {
       const r = rects.get(id);
       if (fresh[i]) cache.set(id, { info: fresh[i], key: r ? `${r.x},${r.y},${r.w},${r.h}` : '' });
@@ -116,14 +141,17 @@ function startX11Watch({
       const json = JSON.stringify(snap);
       if (json !== lastJson) {
         lastJson = json;
+        unchanged = 0;
         onSnapshot(snap);
+      } else {
+        unchanged += 1;
       }
     } catch (err) {
       if (stopped) return;
       if (err && err.code === 'ENOENT') return giveUp(`${err.path || 'xprop/xwininfo'} not found: install x11-utils (xprop, xwininfo)`);
       if (++failures >= GIVE_UP) return giveUp(err?.message || String(err));
     }
-    if (!stopped) handle = timer.set(tick, INTERVAL);
+    if (!stopped) handle = timer.set(tick, every());
   };
 
   tick();
@@ -135,4 +163,4 @@ function startX11Watch({
   };
 }
 
-module.exports = { startX11Watch, INTERVAL, GIVE_UP };
+module.exports = { startX11Watch, INTERVAL, IDLE_INTERVAL, GIVE_UP };
