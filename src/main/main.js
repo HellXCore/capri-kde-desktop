@@ -85,6 +85,7 @@ let chatError = null;  // why not, when the provider said
 let chatErrorCode = null; // 'nokey' or 'nourl': what her setup should ask for
 // Ollama's cloud, as last seen: your account ({ name } or { signin }) and the models free with it
 let cloud = { at: 0, account: null, free: [] };
+let chatFocus = false;
 const chats = new Map(); // id -> AbortController of an answer being streamed
 
 const userSoundsDir = () => path.join(app.getPath('userData'), 'sounds');
@@ -202,7 +203,7 @@ function rearmOverlay() {
     overlay.setIgnoreMouseEvents(true, { forward: true });
   }
   overlay.setAlwaysOnTop(true, 'screen-saver');
-  if (LINUX_MANAGED) overlay.setFocusable(false);
+  if (LINUX_MANAGED && !chatFocus) overlay.setFocusable(false);
   fitOverlay();
   sendCommand('rearmed');
 }
@@ -1149,12 +1150,14 @@ function registerIpc() {
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
   ipcMain.on('overlay:focus', (_e, on) => {
     if (!overlay) return;
+    chatFocus = Boolean(on);
     overlay.setFocusable(Boolean(on));
     // KDE Wayland: KWin does not hand the keyboard to a window that asks for it, so its script
     // activates her overlay, and gives it back to the window you were on when her chat is done
     windowWatch?.focus?.(Boolean(on));
     if (on) overlay.focus();
     else overlay.blur();
+    inputRegion?.reapply(); // The hints have changed — the region might have been reset.
   });
   // her report card's copy button: a picture of that part of the overlay, on the clipboard
   ipcMain.handle('panel:copy', async (_e, rect) => {
