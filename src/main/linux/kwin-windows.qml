@@ -326,9 +326,27 @@ Item {
 
     // ---------- the keyboard ----------
 
+    // Where the keyboard goes back to: the window you were on, if it is in view; else the topmost one
+    // in view; else nowhere. Activating a window that is on another workspace makes KWin switch to
+    // that workspace: going to an empty one (where KWin hands the focus to her, who is on all of them)
+    // used to be undone 250 ms later by giving the keyboard back to a window of the one you left.
+    function giveBackTarget() {
+        const current = Workspace.currentDesktop ? root.deskIndex(Workspace.currentDesktop) : null;
+        const last = root.lastActive;
+        if (last && !last.deleted && !root.isSelf(last) && root.isShown(last, current)) return last;
+        const order = Workspace.stackingOrder;
+        for (let i = order.length - 1; i >= 0; i--) {
+            const w = order[i];
+            if (!w || w.deleted || !w.managed || root.isSelf(w)) continue;
+            if (!(w.normalWindow || w.dialog)) continue;
+            if (root.isShown(w, current)) return w;
+        }
+        return null;
+    }
+
     function giveBack() {
-        const w = root.lastActive;
-        if (!w || w.deleted) return;
+        const w = root.giveBackTarget();
+        if (!w) return;
         try {
             Workspace.activeWindow = w;
         } catch (e) {
