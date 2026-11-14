@@ -27,7 +27,7 @@ async function indexed(terms, exts) {
 }
 
 // The walk, when the index isn't there: your usual folders, a few levels down, by name and type.
-function walked(terms, exts) {
+async function walked(terms, exts) {
   const roots = ['desktop', 'documents', 'downloads', 'pictures', 'music', 'videos'].map((k) => app.getPath(k));
   const onedrive = process.env.OneDrive;
   if (onedrive) roots.push(onedrive);
@@ -38,7 +38,7 @@ function walked(terms, exts) {
     const [dir, depth] = queue.shift();
     let entries = [];
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -61,8 +61,8 @@ async function search({ query = '', exts = [] } = {}) {
   const terms = words(query);
   if (!terms.length && !exts.length) return [];
   const paths = await indexed(terms, exts);
-  const results = listed(paths?.length ? paths : walked(terms, exts));
-  return results.length || !paths?.length ? results : listed(walked(terms, exts));
+  const results = listed(paths?.length ? paths : await walked(terms, exts));
+  return results.length || !paths?.length ? results : listed(await walked(terms, exts));
 }
 
 function listed(paths) {
