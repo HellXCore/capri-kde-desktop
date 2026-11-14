@@ -38,8 +38,8 @@ def on_response(conn, sender, path, iface, signal, params):
         pass
     loop.quit()
 
-# Формируем токен и путь к объекту Request согласно спецификации XDG Portal,
-# чтобы подписаться на сигнал Response до совершения вызова (защита от race condition)
+# We generate a token and a path to the Request object in accordance with the XDG Portal specification,
+# to subscribe to the Response signal before making the call (protection against race conditions)
 token = f"shot_{GLib.random_int()}"
 sender = bus.get_unique_name()[1:].replace(".", "_")
 req_path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
@@ -62,7 +62,7 @@ proxy = Gio.DBusProxy.new_sync(
     None
 )
 
-# Таймаут на случай отсутствия ответа от портала
+# Timeout in case of no response from the portal
 GLib.timeout_add_seconds(10, lambda: (loop.quit(), False)[1])
 
 ret = proxy.call_sync(
