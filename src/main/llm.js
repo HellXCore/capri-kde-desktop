@@ -150,10 +150,12 @@ function claudeChat(cfg, text, persona, onDelta, signal) {
       cwd: cfg.claudeCwd || os.homedir(),
       shell: process.platform === 'win32',
       windowsHide: true,
+      detached: process.platform !== 'win32',
     });
-    const kill = () => (process.platform === 'win32'
-      ? execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], () => {})
-      : child.kill());
+    const kill = () => {
+      if (process.platform === 'win32') return execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], () => {});
+      try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+    };
     signal.addEventListener('abort', kill, { once: true });
     let buffer = '';
     let all = '';
@@ -185,6 +187,7 @@ function claudeChat(cfg, text, persona, onDelta, signal) {
     child.stdin.end(text);
     child.on('error', reject);
     child.on('close', () => {
+      signal.removeEventListener('abort', kill);
       if (signal.aborted) return reject(new Error('stopped'));
       if (result?.is_error) return reject(new Error(result.result || 'Claude Code failed'));
       if (!result) return reject(new Error(errors.trim().slice(0, 300) || 'Claude Code gave no answer'));
