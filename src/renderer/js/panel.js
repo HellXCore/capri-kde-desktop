@@ -40,6 +40,7 @@ export class Panel {
     this.actions = panel.querySelector('.panel__actions');
     this.onAction = null; // (id) => void, a button of the message was clicked
     this.onDismiss = null; // (message) => void, a message left: closed, timed out or replaced
+    this.onLayout = null;
     this.summary = panel.querySelector('.panel__summary');
     this.log = panel.querySelector('.panel__log');
     this.tag = panel.querySelector('.panel__tag');
@@ -461,6 +462,7 @@ export class Panel {
     const gone = this.current;
     this.current = null;
     this.leaving = true;
+    this.onLayout?.();
     if (gone) {
       this.onDismiss?.(gone);
       gone.onLeave?.();
@@ -532,6 +534,7 @@ export class Panel {
     this.suspended = true;
     this.el.style.visibility = 'hidden';
     this.tickerEl.style.visibility = 'hidden';
+    this.onLayout?.();
   }
 
   resume() {
@@ -645,6 +648,7 @@ export class Panel {
       const top = Math.max(margin, crown - this.tickerEl.offsetHeight - 10);
       this.tickerEl.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
     }
+    this.onLayout?.();
   }
 
   rect() {

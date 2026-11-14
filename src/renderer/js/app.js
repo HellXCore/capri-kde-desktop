@@ -170,6 +170,8 @@ async function boot() {
     shapeRaf = requestAnimationFrame(updateShapes);
   };
 
+  panel.onLayout = scheduleUpdateShapes;
+
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
   let mouse = null;
@@ -268,7 +270,7 @@ async function boot() {
   // Linux: the faster beat only looks at her shapes again (panel, chip and mask come and go without a
   // mouse event, and the window ignores the mouse then). sendShape drops what did not change, so this
   // is no IPC; where the pointer really is, is only needed every WATCH_MS to follow it to a screen.
-  pause.every(() => scheduleUpdateShapes(), 50);
+  pause.every(() => scheduleUpdateShapes(), 1000); // insurance; everything else — as events unfold
 
   window.addEventListener('contextmenu', (e) => {
     e.preventDefault();
