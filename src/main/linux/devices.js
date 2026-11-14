@@ -114,7 +114,7 @@ function removableDrives({ sysfs = '/sys', mounts = '/proc/self/mounts' } = {}) 
 
 // Looks at the USB devices and the removable drives now and then; onChange() when usb or plug changed.
 function createDevices({
-  sysfs = '/sys', mounts = '/proc/self/mounts', intervalMs = 1000, settleMs = 1200, onChange = () => {},
+  sysfs = '/sys', mounts = '/proc/self/mounts', intervalMs = 5000, settleMs = 1200, onChange = () => {},
   timers = { setInterval, clearInterval, setTimeout, clearTimeout },
 } = {}) {
   let devices = null; // Map id -> { name, class }: the devices as of the last look
