@@ -1524,6 +1524,12 @@ function main() {
     // pauses its helper on the same events itself: windows.js). Main goes on: the bridge still
     // takes Claude Code's events and passes them on, she shows what matters once you're back.
     powerWatch = watchPower({ power: powerMonitor, onChange: sendPower });
+    require('./linux/dbus-mini').Bus.connect().then((bus) => {
+      app.once('will-quit', () => bus.close());
+      const onActive = (msg) => powerWatch?.emit(msg.buf.readUInt32LE(msg.bodyStart) ? 'lock-screen' : 'unlock-screen');
+      bus.subscribe({ iface: 'org.freedesktop.ScreenSaver', member: 'ActiveChanged' }, onActive).catch(() => {});
+      bus.subscribe({ iface: 'org.gnome.ScreenSaver', member: 'ActiveChanged' }, onActive).catch(() => {});
+    }).catch(() => {});
   });
 
   app.on('will-quit', () => {

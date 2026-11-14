@@ -295,6 +295,7 @@ class Bus {
     this.serial = 0;
     this.pending = new Map(); // serial -> { resolve, reject, timer, member }
     this.objects = new Map(); // path -> Map(iface -> { Method: { in, out, fn } })
+    this.signals = [];
     this.state = 'auth';
     this.closed = false;
     this.unique = null;
@@ -404,8 +405,12 @@ class Bus {
       }
     } else if (msg.type === TYPE.CALL) {
       this.handleCall(msg);
+    } else if (msg.type === TYPE.SIGNAL) {
+      for (const s of this.signals) {
+        if (s.iface === msg.iface && s.member === msg.member && (!s.path || s.path === msg.path)) s.fn(msg);
+      }
     } // signals are ignored
-  }
+  } 
 
   // args: [['s', 'text'], ['u', 4]]; resolves with the reply's values
   call({ destination, path, iface, member, args = [], timeout = CALL_TIMEOUT_MS }) {
@@ -488,6 +493,12 @@ class Bus {
     } catch (err) {
       if (!quiet) this.fault(msg, err.dbusName || 'org.freedesktop.DBus.Error.Failed', String(err.message || err).slice(0, 200));
     }
+  }
+
+  async subscribe({ iface, member, path = null }, fn) {
+    const rule = `type='signal',interface='${iface}',member='${member}'` + (path ? `,path='${path}'` : '');
+    await this.call({ ...DBUS, member: 'AddMatch', args: [['s', rule]] });
+    this.signals.push({ iface, member, path, fn });
   }
 }
 
