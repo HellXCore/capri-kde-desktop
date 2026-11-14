@@ -68,6 +68,7 @@ Item {
     property var moveGeo: null       // its latest geometry, not sent yet
     property string netKey: ""       // what the 500 ms net saw last time (see safetyNet)
     property int netTick: 0
+    property int cursorIdle: 0       // beats in a row the pointer did not move (sendCursor)
 
     // ---------- what to send ----------
 
@@ -305,7 +306,7 @@ Item {
             return;
         }
         root.misplaced += 1;
-        if (now || root.misplaced >= 3) {
+        if (now || root.misplaced >= Math.max(1, Math.round(450 / pollTimer.interval))) {
             root.misplaced = 0;
             try {
                 w.frameGeometry = Qt.rect(r.x, r.y, r.w, r.h);
@@ -371,7 +372,7 @@ Item {
 
     // every few ticks, while polling: the overlay still where it should be, and still on top?
     function checkSelf() {
-        const mine = root.selfWindow();
+        const mine = root.selfRef();
         if (mine) {
             root.place(mine, false);
             root.missing = 0;
@@ -459,7 +460,14 @@ Item {
         const mine = root.selfRef();
         let key = Math.round(p.x) + "," + Math.round(p.y);
         if (mine) key += "," + Math.round(p.x - mine.frameGeometry.x) + "," + Math.round(p.y - mine.frameGeometry.y);
-        if (key === root.cursorKey) return;
+        if (key === root.cursorKey) {
+            root.cursorIdle += 1;
+            if (root.cursorIdle === 30 && cursorTimer.interval !== 100) cursorTimer.interval = 100;
+            return;
+        }
+        root.cursorIdle = 0;
+        if (cursorTimer.interval !== 33) cursorTimer.interval = 33;
+        if (pollTimer.interval !== 150) pollTimer.interval = 150; // Capri may be about to be used
         root.cursorKey = key;
         cursorCall.arguments = [key];
         cursorCall.call();
@@ -479,11 +487,18 @@ Item {
             return;
         }
         if (answer.self) root.applySelf(answer.self);
+        if (answer.next > 0) root.pollEvery(answer.next);
         const queued = answer.commands || [];
         for (let i = 0; i < queued.length; i++) {
             if (queued[i].op === "close") root.closeWindows(queued[i].pids);
             else if (queued[i].op === "focus") root.setFocus(Boolean(queued[i].on));
         }
+    }
+
+    // the pace of the poll, as the receiver says it (never faster than 100 ms or slower than 1 s)
+    function pollEvery(ms) {
+        const v = Math.max(100, Math.min(1000, Math.round(ms)));
+        if (pollTimer.interval !== v) pollTimer.interval = v;
     }
 
     // like the close button: the app can still ask to save
@@ -789,7 +804,11 @@ Item {
 
     // The receiver's commands (the keyboard for her chat, closing an app): often enough that typing
     // to her works as soon as the chat opens.
+    // 150 ms while something is going on (the pointer moves, the keyboard is hers, a command waits);
+    // the receiver slows it down when nothing is ("next" in its answer), and any pointer movement
+    // brings the fast beat back at once (sendCursor).
     Timer {
+        id: pollTimer
         interval: 150
         repeat: true
         running: true
@@ -799,8 +818,9 @@ Item {
         }
     }
 
-    // 30 times a second at most, and only while the pointer moves
+    // 30 times a second at most while the pointer moves; every 100 ms once it has been still for a second
     Timer {
+        id: cursorTimer
         interval: 33
         repeat: true
         running: true

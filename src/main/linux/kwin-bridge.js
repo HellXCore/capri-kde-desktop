@@ -190,6 +190,17 @@ function startKWinWatch({
   // The light channel (Move): while one window is dragged, only its rectangle arrives. Latest wins:
   // a Move that comes before the previous one went out replaces it (at most one per MOVE_MIN_MS).
   const MOVE_MIN_MS = 8;
+
+  // The pace of the script's poll: fast while something is going on (the pointer moved lately, her
+  // chat holds the keyboard, a command was just given), slow when nothing is. Said in each answer.
+  const POLL_FAST_MS = 150;
+  const POLL_SLOW_MS = 500;
+  const POLL_HOT_MS = 3000;
+  let hotUntil = 0;
+  let focusOn = false;
+  let lastSelfKey = ''; // what the script was last told about (Update or Poll): said again only if it changed
+  const hot = () => { hotUntil = Date.now() + POLL_HOT_MS; };
+  const pollMs = () => (focusOn || queue.length || Date.now() < hotUntil ? POLL_FAST_MS : POLL_SLOW_MS);
   let pendingMove = null;
   let moveTimer = null;
   let lastMoveAt = 0;
@@ -242,7 +253,8 @@ function startKWinWatch({
     } catch (err) {
       log.error('[capri] kwin watch: bad update:', err?.message ?? err);
     }
-    return JSON.stringify(selfReply());
+    lastSelfKey = JSON.stringify(selfReply()); // the script has it now: the next Poll need not say it
+    return lastSelfKey;
   };
 
   // the snapshot with the devices as they are now; only when something changed
@@ -267,6 +279,7 @@ function startKWinWatch({
 
   const start = async () => {
     watched.start();
+    lastSelfKey = '';
     bus = await Bus.connect();
     bus.onClose = (err) => {
       if (!stopped) fail(`lost the session bus (${err?.message ?? err})`);
@@ -313,6 +326,7 @@ function startKWinWatch({
         const next = parseCursor(text);
         if (next) {
           cursor = next;
+          hot();
           if (next.rel) onPointer(next.rel); // from the overlay's top left corner, in KWin's pixels
         }
         return [];
@@ -326,7 +340,16 @@ function startKWinWatch({
         }
         return [];
       }),
-      Poll: guarded('', 's', () => [JSON.stringify({ self: selfReply(), commands: queue.splice(0) })]),
+      Poll: guarded('', 's', () => {
+        const reply = { next: pollMs() };
+        const self = JSON.stringify(selfReply());
+        if (self !== lastSelfKey) { // only when it changed since the script last heard it
+          lastSelfKey = self;
+          reply.self = JSON.parse(self);
+        }
+        reply.commands = queue.splice(0);
+        return [JSON.stringify(reply)];
+      }),
     });
     const owned = await bus.requestName(BUS_NAME, 4); // 4: DO_NOT_QUEUE
     if (owned !== 1) throw new Error(`${BUS_NAME} is taken (another Capri running?)`);
@@ -365,12 +388,17 @@ function startKWinWatch({
     // asks KWin to close the windows of these processes, as their close button would
     closeApps(pids) {
       const ids = [...new Set(list(pids).filter((n) => Number.isInteger(n) && n > 1))].slice(0, MAX_PIDS);
-      if (ids.length) queue.push({ op: 'close', pids: ids });
+      if (ids.length) {
+        queue.push({ op: 'close', pids: ids });
+        hot();
+      }
     },
     // the keyboard for her overlay (her chat is open) or back to the window you were on: KWin does
     // not give it to a window that asked for it itself, so the script activates her
     focus(on) {
-      queue.push({ op: 'focus', on: Boolean(on) });
+      focusOn = Boolean(on);
+      queue.push({ op: 'focus', on: focusOn });
+      hot();
     },
     stop() {
       stopped = true;
