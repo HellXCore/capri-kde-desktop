@@ -939,6 +939,7 @@ function registerIpc() {
   if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
   const { rects, dpr } = payload || {};
   inputRegion?.set(Array.isArray(rects) ? rects : [], dpr);
+  windowWatch?.setZones?.(Array.isArray(rects) ? rects : []);
 });
   ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
@@ -1488,7 +1489,6 @@ function main() {
       onPointer: (p) => inputRegion?.pointer?.(p), // native Wayland: her window takes the mouse while it is over her
       area: () => overlayArea().area, // and where it should be, which only the KWin script can see to
       onUpdate: (data) => {
-        // a click on the taskbar brings it up over her: sitting on it, her legs would vanish behind it
         if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();
         lastWindows = data;
         overlay?.webContents.send('windows:update', data);

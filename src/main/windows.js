@@ -95,6 +95,7 @@ function startLinuxWatch({ overlay, onUpdate, onState, onCommand, onPointer, are
       refresh: feed.send,
       source: 'kwin', // the same script also lists and closes apps, and owns Ctrl+Alt+C
       focus: (on) => watch.focus(on), // the keyboard, for typing to her (her chat)
+      setZones: (rects) => watch.setZones?.(rects),
       origin: feed.origin, // native Wayland: where KWin has her window ({ x, y, width, height }), else null
       // where the pointer really is, in the screen's DIPs ({ x, y }), or null until KWin has said:
       // under XWayland Electron's own cursor point is stale over native Wayland windows

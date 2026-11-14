@@ -71,6 +71,9 @@ Item {
     property int netTick: 0
     property int cursorIdle: 0       // beats in a row the pointer did not move (sendCursor)
     property string flagsKey: ""      // what the receiver last said about debugging (applySelf)
+    property var zone: null
+    property bool cursorHot: false
+    property real coldAt: 0
     readonly property string build: "@BUILD@" // the hash of this text, put in by the receiver (writeScript)
 
     // ---------- what to send ----------
@@ -513,6 +516,16 @@ Item {
     function sendCursor() {
         const p = Workspace.cursorPos;
         const mine = root.selfRef();
+        if (mine && root.zone) {
+            const rx = p.x - mine.frameGeometry.x, ry = p.y - mine.frameGeometry.y;
+            const hot = rx >= root.zone.x && rx <= root.zone.x + root.zone.w && ry >= root.zone.y && ry <= root.zone.y + root.zone.h;
+            if (!hot && !root.cursorHot) {
+                const now = Date.now();
+                if (now - root.coldAt < 500) return;
+                root.coldAt = now;
+            }
+            root.cursorHot = hot;
+        }
         let key = Math.round(p.x) + "," + Math.round(p.y);
         if (mine) key += "," + Math.round(p.x - mine.frameGeometry.x) + "," + Math.round(p.y - mine.frameGeometry.y);
         if (key === root.cursorKey) {
@@ -754,6 +767,7 @@ Item {
         if (!next || typeof next !== "object") return;
         const changed = next.selfPid !== root.cfg.selfPid || next.selfTitle !== root.cfg.selfTitle;
         root.cfg = next;
+        if (next.zone !== undefined) root.zone = next.zone;
         // always written (once, and again if it changes): shows that this script is the one running and
         // that the receiver's environment (CAPRI_TRACE_KWIN, CAPRI_KWIN_NO_*, CAPRI_KWIN_TUNE_OFF) got here
         const flags = "trace=" + Boolean(next.trace) + " noGiveBack=" + Boolean(next.noGiveBack)

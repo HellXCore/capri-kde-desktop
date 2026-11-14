@@ -29,6 +29,7 @@
 // nothing is installed into the user's KWin scripts. Only KWin's own connection may call Update.
 
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const x11 = require('./x11');
 const { Bus } = require('./dbus-mini');
@@ -156,6 +157,29 @@ function applyMove(snap, mv, outputs, units) {
   return { ...snap, wins };
 }
 
+// The script, written where KWin can read it, under a name that holds the hash of its text. KWin keeps
+// the compiled QML of a path it has loaded once for as long as it runs, so a changed script written to
+// the same path could go on running as the old one. A new text is a new path: it is what runs.
+// The older copies are removed. The build (the hash) is told to the script and shows in the log.
+function writeScript(scriptDir, source = path.join(__dirname, 'kwin-windows.qml')) {
+  const text = fs.readFileSync(source, 'utf8');
+  const build = crypto.createHash('sha1').update(text).digest('hex').slice(0, 8);
+  fs.mkdirSync(scriptDir, { recursive: true });
+  const name = `${SCRIPT_NAME}-${build}.qml`;
+  const file = path.join(scriptDir, name);
+  fs.writeFileSync(file, text.replace('"@BUILD@"', JSON.stringify(build)));
+  for (const f of fs.readdirSync(scriptDir)) {
+    if (f !== name && new RegExp(`^${SCRIPT_NAME}(-[0-9a-f]{8})?\\.qml$`).test(f)) {
+      try {
+        fs.unlinkSync(path.join(scriptDir, f));
+      } catch {
+        // not ours to worry about
+      }
+    }
+  }
+  return { file, build };
+}
+
 // session: capabilities.linuxSession(). getSelf(): { pid, title } of the overlay (its pid and the
 // window title it was given), to leave it out. scriptDir: a writable real directory.
 // Same contract as startX11Watch: onSnapshot(snap) physical-pixel snapshots, onState(ok).
@@ -198,7 +222,8 @@ function startKWinWatch({
   const POLL_HOT_MS = 3000;
   let hotUntil = 0;
   let focusOn = false;
-  let lastSelfKey = ''; // what the script was last told about (Update or Poll): said again only if it changed
+  let zones = null; // union of interactive rects, overlay coordinates
+  let lastSelfKey = ''; // what the script was last told about her (Update or Poll): said again only if it changed
   const hot = () => { hotUntil = Date.now() + POLL_HOT_MS; };
   const pollMs = () => (focusOn || queue.length || Date.now() < hotUntil ? POLL_FAST_MS : POLL_SLOW_MS);
   let pendingMove = null;
@@ -271,7 +296,15 @@ function startKWinWatch({
   const selfReply = () => {
     const self = getSelf() || {};
     const reply = { selfPid: self.pid || 0, selfTitle: self.title || '' };
+    if (zones) reply.zone = zones;
     if (units !== 'physical' && isRect(self.rect)) reply.selfRect = self.rect;
+    if (process.env.CAPRI_TRACE_KWIN === '1') reply.trace = true; // the script writes what it does with the focus
+    // to tell which of what the script does to other windows is behind a problem (debugging only):
+    if (process.env.CAPRI_KWIN_NO_GIVEBACK === '1') reply.noGiveBack = true; // it never activates a window
+    if (process.env.CAPRI_KWIN_NO_RAISE === '1') reply.noRaise = true;       // it never raises her
+    // CAPRI_KWIN_TUNE_OFF=above,desktops,taskbar,pager,switcher: flags of her window it leaves as they are
+    const off = String(process.env.CAPRI_KWIN_TUNE_OFF || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (off.length) reply.tuneOff = off;
     return reply;
   };
 
@@ -355,9 +388,10 @@ function startKWinWatch({
     if (owned !== 1) throw new Error(`${BUS_NAME} is taken (another Capri running?)`);
 
     // the script, written out where KWin can read it, and started
-    fs.mkdirSync(scriptDir, { recursive: true });
-    const file = path.join(scriptDir, `${SCRIPT_NAME}.qml`);
-    fs.writeFileSync(file, fs.readFileSync(path.join(__dirname, 'kwin-windows.qml')));
+    const { file, build } = writeScript(scriptDir);
+    const flags = ['CAPRI_TRACE_KWIN', 'CAPRI_KWIN_NO_GIVEBACK', 'CAPRI_KWIN_NO_RAISE', 'CAPRI_KWIN_TUNE_OFF']
+      .filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
+    log.log(`[capri] kwin watch: script build ${build} (${path.basename(file)})${flags.length ? `, debug: ${flags.join(' ')}` : ''}`);
 
     const [loaded] = await bus.call({ ...KWIN, member: 'isScriptLoaded', args: [['s', SCRIPT_NAME]] });
     if (loaded) await bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] }); // a leftover
@@ -374,6 +408,17 @@ function startKWinWatch({
   start().catch((err) => fail(err?.message ?? String(err)));
 
   const api = {
+    setZones(rects) {
+      const rs = (Array.isArray(rects) ? rects : []).filter((r) => r && r.width > 0 && r.height > 0);
+      const next = rs.length ? {
+        x: Math.min(...rs.map((r) => r.x)) - 24, y: Math.min(...rs.map((r) => r.y)) - 24, w: 0, h: 0,
+      } : null;
+      if (next) {
+        next.w = Math.max(...rs.map((r) => r.x + r.width)) + 24 - next.x;
+        next.h = Math.max(...rs.map((r) => r.y + r.height)) + 24 - next.y;
+      }
+      if (JSON.stringify(next) !== JSON.stringify(zones)) { zones = next; lastSelfKey = ''; }
+    },
     get ready() {
       return running && !stopped;
     },
@@ -417,4 +462,4 @@ function startKWinWatch({
 // the running watcher, or null (apps-linux.js, windows.js)
 const current = () => (active && active.ready ? active : null);
 
-module.exports = { startKWinWatch, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels, BUS_NAME, OBJECT_PATH, SCRIPT_NAME };
+module.exports = { startKWinWatch, writeScript, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels, BUS_NAME, OBJECT_PATH, SCRIPT_NAME };
