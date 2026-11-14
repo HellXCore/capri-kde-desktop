@@ -51,6 +51,7 @@ Item {
     property int nextId: 1
     property string lastJson: ""
     property bool failing: false
+    property int failCount: 0
     property string cursorKey: ""
     property var tuned: ({})   // overlay windows already given their flags
     property bool focusWanted: false // her chat is open: the keyboard is hers
@@ -69,6 +70,8 @@ Item {
     property string netKey: ""       // what the 500 ms net saw last time (see safetyNet)
     property int netTick: 0
     property int cursorIdle: 0       // beats in a row the pointer did not move (sendCursor)
+    property string flagsKey: ""      // what the receiver last said about debugging (applySelf)
+    readonly property string build: "@BUILD@" // the hash of this text, put in by the receiver (writeScript)
 
     // ---------- what to send ----------
 
@@ -280,12 +283,14 @@ Item {
         const key = String(w.internalId);
         if (root.tuned[key]) return;
         root.tuned[key] = true;
+        const off = root.cfg.tuneOff || []; // debugging: flags to leave alone (CAPRI_KWIN_TUNE_OFF)
+        root.trace("tune the overlay (" + root.traceName(w) + "), leaving alone: [" + off.join(",") + "]");
         try {
-            w.keepAbove = true;
-            w.onAllDesktops = true;
-            w.skipTaskbar = true;
-            w.skipPager = true;
-            w.skipSwitcher = true;
+            if (off.indexOf("above") < 0) w.keepAbove = true;
+            if (off.indexOf("desktops") < 0) w.onAllDesktops = true;
+            if (off.indexOf("taskbar") < 0) w.skipTaskbar = true;
+            if (off.indexOf("pager") < 0) w.skipPager = true;
+            if (off.indexOf("switcher") < 0) w.skipSwitcher = true;
         } catch (e) {
             console.warn("capri-windows: could not set the overlay's flags:", e);
         }
@@ -308,6 +313,7 @@ Item {
         root.misplaced += 1;
         if (now || root.misplaced >= Math.max(1, Math.round(450 / pollTimer.interval))) {
             root.misplaced = 0;
+            root.trace("place the overlay at " + r.x + "," + r.y + " " + r.w + "x" + r.h + " (it was at " + Math.round(g.x) + "," + Math.round(g.y) + " " + Math.round(g.width) + "x" + Math.round(g.height) + ")");
             try {
                 w.frameGeometry = Qt.rect(r.x, r.y, r.w, r.h);
             } catch (e) {
@@ -330,6 +336,28 @@ Item {
     // in view; else nowhere. Activating a window that is on another workspace makes KWin switch to
     // that workspace: going to an empty one (where KWin hands the focus to her, who is on all of them)
     // used to be undone 250 ms later by giving the keyboard back to a window of the one you left.
+    // CAPRI_TRACE_KWIN=1 (Capri's environment): every focus change and minimize is written to the log
+    //   journalctl --user -b | grep capri-windows
+    function trace(text) {
+        if (root.cfg.trace) console.warn("capri-windows: " + text); // warn: info is dropped by some setups
+    }
+
+    function traceName(w) {
+        if (!w) return "none";
+        return String(w.resourceClass) + " (min=" + w.minimized + ", desktops=" + (w.desktops ? w.desktops.length : "?") + ")";
+    }
+
+    function hookMinimize(w) {
+        try {
+            const signal = w.minimizedChanged;
+            const f = () => root.trace("minimized=" + w.minimized + ": " + root.traceName(w));
+            signal.connect(f);
+            root.hooked.push({ s: signal, f: f });
+        } catch (e) {
+            // no such signal here
+        }
+    }
+
     function giveBackTarget() {
         const current = Workspace.currentDesktop ? root.deskIndex(Workspace.currentDesktop) : null;
         const last = root.lastActive;
@@ -345,7 +373,12 @@ Item {
     }
 
     function giveBack() {
+        if (root.cfg.noGiveBack) {
+            root.trace("give the keyboard back: off (CAPRI_KWIN_NO_GIVEBACK=1)");
+            return;
+        }
         const w = root.giveBackTarget();
+        root.trace("give the keyboard back to " + root.traceName(w) + ", the one active now is " + root.traceName(Workspace.activeWindow));
         if (!w) return;
         try {
             Workspace.activeWindow = w;
@@ -355,6 +388,7 @@ Item {
     }
 
     function setFocus(on) {
+        root.trace("the keyboard for her: " + on);
         root.focusWanted = on;
         if (on) giveBackTimer.stop();
         const mine = root.selfWindow();
@@ -374,6 +408,7 @@ Item {
     // later: moved away in the middle of the click, the press and the release no longer belong
     // together (Chromium drops the mouse when its window loses the focus), and she would not answer.
     function windowActivated(w) {
+        root.trace("activated " + root.traceName(w) + (w && root.isSelf(w) ? " = her" : ""));
         if (w && root.isSelf(w)) {
             if (!root.focusWanted) giveBackTimer.restart();
         } else if (w) {
@@ -431,6 +466,7 @@ Item {
     // possession) is hidden. Raised once for each set of windows over her: a full-screen window is
     // in a higher layer, raising her does not get past it, and doing it again would change nothing.
     function ensureTop() {
+        if (root.cfg.noRaise) return; // CAPRI_KWIN_NO_RAISE=1
         const order = Workspace.stackingOrder;
         let at = -1;
         for (let i = 0; i < order.length; i++) {
@@ -456,6 +492,7 @@ Item {
         if (key === root.raisedFor) return;
         root.raisedFor = key;
         try {
+            root.trace("raise the overlay over " + over.length + " window(s)");
             Workspace.raiseWindow(order[at]);
         } catch (e) {
             console.warn("capri-windows: could not raise the overlay:", e);
@@ -485,7 +522,7 @@ Item {
         }
         root.cursorIdle = 0;
         if (cursorTimer.interval !== 33) cursorTimer.interval = 33;
-        if (pollTimer.interval !== 150) pollTimer.interval = 150; // Capri may be about to be used
+        if (pollTimer.interval !== 150) pollTimer.interval = 150; // she may be about to be used
         root.cursorKey = key;
         cursorCall.arguments = [key];
         cursorCall.call();
@@ -498,6 +535,7 @@ Item {
 
     // the receiver's answer to a poll: { self, commands: [{ op: "close", pids }, { op: "focus", on }] }
     function runCommands(text) {
+        root.failCount = 0;
         let answer = {};
         try {
             answer = JSON.parse(text);
@@ -528,6 +566,7 @@ Item {
             if (!w || w.deleted || !w.closeable || root.isSelf(w)) continue;
             if (!(w.normalWindow || w.dialog)) continue;
             if (pids.indexOf(w.pid) < 0) continue;
+            root.trace("close " + root.traceName(w));
             try {
                 w.closeWindow();
             } catch (e) {
@@ -597,10 +636,11 @@ Item {
         root.watched[key] = true;
         root.hookMove(w);
         root.hookCaption(w);
+        root.hookMinimize(w);
         const signals = [
             "frameGeometryChanged", "minimizedChanged", "desktopsChanged", "activitiesChanged",
-            "fullScreenChanged", "maximizedChanged", "skipTaskbarChanged", "hiddenChanged",
-            "stackingOrderChanged", "activeChanged", "outputChanged",
+            "fullScreenChanged", "maximizedChanged", "skipTaskbarChanged",
+            "hiddenChanged", "stackingOrderChanged", "activeChanged", "outputChanged",
         ];
         for (let i = 0; i < signals.length; i++) {
             try {
@@ -645,7 +685,7 @@ Item {
             }
         }
     }
-    
+
     // A caption changes as often as a terminal prints or a browser loads a tab, and all of it used to
     // wake the full collect. The payload only has a title in two places: the AIs the window in front
     // is (its caption), and telling the overlay from the other windows (her title). So only those.
@@ -702,6 +742,7 @@ Item {
     // the receiver's reply: who it is, so its own overlay is left out of the list
     function onReply(returned) {
         root.failing = false;
+        root.failCount = 0;
         try {
             root.applySelf(JSON.parse(returned[0]));
         } catch (e) {
@@ -713,14 +754,32 @@ Item {
         if (!next || typeof next !== "object") return;
         const changed = next.selfPid !== root.cfg.selfPid || next.selfTitle !== root.cfg.selfTitle;
         root.cfg = next;
-        if (changed) root.lastJson = ""; // send again, now without the overlay
+        // always written (once, and again if it changes): shows that this script is the one running and
+        // that the receiver's environment (CAPRI_TRACE_KWIN, CAPRI_KWIN_NO_*, CAPRI_KWIN_TUNE_OFF) got here
+        const flags = "trace=" + Boolean(next.trace) + " noGiveBack=" + Boolean(next.noGiveBack)
+            + " noRaise=" + Boolean(next.noRaise) + " tuneOff=[" + (next.tuneOff || []).join(",") + "]";
+        if (flags !== root.flagsKey) {
+            root.flagsKey = flags;
+            console.warn("capri-windows: script of patch 13, told: " + flags);
+        }
+        if (changed) {
+            root.lastJson = ""; // send again, now without the overlay
+            root.netKey = "";
+        }
     }
 
     function onFailed() {
         // the receiver is gone (Capri closed): sent again when it is back
         root.lastJson = "";
+        root.netKey = "";
         if (!root.failing) console.warn("capri-windows: no receiver on org.capri.WindowBridge");
         root.failing = true;
+        // self unload when Capri exit or crash
+        if (++root.failCount >= 20) {
+            pollTimer.stop(); cursorTimer.stop(); netTimer.stop();
+            unloadCall.arguments = ["capri-windows"];
+            unloadCall.call();
+        }
     }
 
     DBusCall {
@@ -776,6 +835,14 @@ Item {
         onFailed: root.onFailed()
     }
 
+    DBusCall {
+        id: unloadCall
+        service: "org.kde.KWin"
+        path: "/Scripting"
+        dbusInterface: "org.kde.kwin.Scripting"
+        method: "unloadScript"
+    }
+
     // the trailing edge: what came in during the 8 ms is sent now
     Timer {
         id: moveTimer
@@ -814,10 +881,11 @@ Item {
     // The safety net for what has no signal (the workspace in view, the order of the stack,
     // outputs), and the way back after the receiver was away.
     Timer {
+        id: netTimer
         interval: 500
         repeat: true
         running: true
-        onTriggered: root.flush()
+        onTriggered: root.safetyNet()
     }
 
     // The receiver's commands (the keyboard for her chat, closing an app): often enough that typing
@@ -887,6 +955,7 @@ Item {
     }
 
     Component.onCompleted: {
+        console.warn("capri-windows: script loaded, build " + root.build);
         const order = Workspace.stackingOrder;
         for (let i = 0; i < order.length; i++) root.watch(order[i]);
         root.flush();
