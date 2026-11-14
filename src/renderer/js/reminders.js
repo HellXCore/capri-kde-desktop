@@ -149,7 +149,7 @@ export class Reminders {
     this.list = Array.isArray(list) ? list : [];
     this.onDue = null;
     this.firing = new Set(); // ids being shown right now
-    setInterval(() => this.check(), 5000);
+    pause.every(() => this.check(), 5000);
   }
 
   // the list as saved (after one was cancelled from her menu)
