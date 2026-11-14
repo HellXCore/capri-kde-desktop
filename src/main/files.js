@@ -15,7 +15,7 @@ const words = (query) => String(query || '').toLowerCase().normalize('NFKD').rep
   .split(/[^\p{L}\p{N}.]+/u).filter((w) => w.length >= 2).slice(0, 5);
 
 // never in the results: code dependencies, app data, git internals
-const JUNK = ['node_modules', '\\AppData\\', '\\.git\\', '\\site-packages\\', '\\$Recycle.Bin\\'];
+const JUNK = ['node_modules', '\\.git\\', '\\site-packages\\', '\\.cache\\', '\\share\\Trash\\'];
 const junk = (p) => JUNK.some((j) => p.replaceAll('/', '\\').includes(j));
 // files that are code, left out of a search by what's inside (any word shows up in some library)
 const CODE = ['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'map', 'lock', 'yml', 'yaml', 'py', 'css', 'html', 'md', 'txt', 'xml', 'log'];
@@ -29,8 +29,6 @@ async function indexed(terms, exts) {
 // The walk, when the index isn't there: your usual folders, a few levels down, by name and type.
 async function walked(terms, exts) {
   const roots = ['desktop', 'documents', 'downloads', 'pictures', 'music', 'videos'].map((k) => app.getPath(k));
-  const onedrive = process.env.OneDrive;
-  if (onedrive) roots.push(onedrive);
   const hits = [];
   const queue = roots.map((dir) => [dir, 0]);
   let seen = 0;

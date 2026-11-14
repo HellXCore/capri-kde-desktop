@@ -90,6 +90,7 @@ function steamGames(root) {
 
 // Epic's games, from its launcher's manifests (not the Unreal Engine plugins it also keeps there)
 function epicGames() {
+  if (process.platform !== 'win32') return []; // TODO: Heroic/Lutris manifests
   const dir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
   let files = [];
   try {
