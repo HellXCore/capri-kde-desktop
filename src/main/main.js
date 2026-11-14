@@ -150,20 +150,20 @@ function targetDisplay() {
   return all.find((d) => d.id === displayId) || all.find((d) => d.id === screen.getPrimaryDisplay().id) || all[0];
 }
 
-// Her window over to another screen (she's on her way there, screens.js). Set twice: going to a
+// Capri window over to another screen (she's on her way there, screens.js). Set twice: going to a
 // screen with another scale, Windows resizes the window once it lands there.
 function moveOverlay(id) {
   if (!displays().some((d) => d.id === id)) return null;
   config.save({ displayId: id });
   fitOverlay();
   const { area } = overlayArea();
-  overlay.setBounds(area);
+  setOverlayBounds(area);
   windowWatch?.refresh();
   rebuildTray();
   return area;
 }
 
-// Her window: the work area, or the whole screen while she rests on the taskbar (her legs hang
+// Capri window: the work area, or the whole screen while she rests on the taskbar (her legs hang
 // over it), less its top row of pixels: a window on top covering the whole screen is a fullscreen
 // app to Windows (animated wallpapers pause, notifications wait). `gap`: how much of her window is
 // below the top of the taskbar (0, or its height).
@@ -173,10 +173,21 @@ function overlayArea() {
   return { area, gap: area.y + area.height - (workArea.y + workArea.height) };
 }
 
+// The `SetBounds` call, containing the current window parameters, is passed to the window system as a request
+// XWayland: this takes the form of a configuration change request, to which KWin responds by creating a new
+// window frame that occupies the entire screen. `fitOverlay` function is executed whenever a display event occurs,
+// or when there is a change in power state or settings. If the result is "false," no further action is required.
+function setOverlayBounds(area) {
+  const b = overlay.getBounds();
+  if (b.x === area.x && b.y === area.y && b.width === area.width && b.height === area.height) return false;
+  overlay.setBounds(area);
+  return true;
+}
+
 function fitOverlay() {
   if (!overlay) return;
   const { area, gap } = overlayArea();
-  overlay.setBounds(area);
+  setOverlayBounds(area);
   inputRegion?.reapply();
   overlay.webContents.send('overlay:resize', { width: area.width, height: area.height, gap });
 }
@@ -952,7 +963,7 @@ function registerIpc() {
     const area = moveOverlay(id);
     if (!area) return null;
     await new Promise((r) => setTimeout(r, 60));
-    overlay.setBounds(area); // again, once Windows has settled it on its new screen
+    setOverlayBounds(area); // after Windows places it on the new screen, if it hasn’t already done so
     const o = overlay.getBounds();
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
