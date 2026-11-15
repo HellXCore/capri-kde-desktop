@@ -222,8 +222,10 @@ function rearmOverlay() {
     overlay.setIgnoreMouseEvents(false);
     overlay.setIgnoreMouseEvents(true, { forward: true });
   }
-  overlay.setAlwaysOnTop(true, 'screen-saver');
-  if (LINUX_MANAGED && !chatFocus) overlay.setFocusable(false);
+  if (caps.session !== 'wayland') {
+    overlay.setAlwaysOnTop(true, 'screen-saver');
+    if (LINUX_MANAGED && !chatFocus) overlay.setFocusable(false);
+  }
   fitOverlay();
   sendCommand('rearmed');
 }
@@ -231,6 +233,7 @@ function rearmOverlay() {
 // Back on top of everything, the taskbar included (it comes up over her when it's clicked). Twice:
 // the taskbar can come up again a moment later, as its menus and previews open.
 function raiseOverlay() {
+  if (caps.session === 'wayland') return;
   for (const wait of [0, 400]) {
     setTimeout(() => {
       if (!overlay || overlay.isDestroyed()) return;
