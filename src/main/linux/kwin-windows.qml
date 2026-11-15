@@ -857,7 +857,7 @@ Item {
         path: "/org/capri/WindowBridge"
         dbusInterface: "org.capri.WindowBridge"
         method: "Command"
-        onFailed: root.onFailed()
+        onFailed: root.linkLost()
     }
 
     DBusCall {
@@ -893,6 +893,7 @@ Item {
         path: "/Scripting"
         dbusInterface: "org.kde.kwin.Scripting"
         method: "unloadScript"
+        arguments: ["capri-windows"]
     }
 
     // the trailing edge: what came in during the 8 ms is sent now
