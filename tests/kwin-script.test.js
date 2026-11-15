@@ -17,36 +17,51 @@ const text = fs.readFileSync(QML, 'utf8');
 // A DBusCall block has no nested braces: it ends at the first line that is only a closing one.
 const calls = [...text.matchAll(/DBusCall\s*\{([\s\S]*?)\n\s*\}/g)].map((m) => m[1]);
 const receiver = calls.filter((b) => b.includes('service: "org.capri.WindowBridge"'));
+const callId = (block) => (/\bid:\s*(\w+)/.exec(block) || [, '(unnamed)'])[1];
+// root.fn(), fn() and spaced calls are all the same wiring
+const failureFn = (block) => (/\bonFailed:\s*(?:root\.)?(\w+)\s*\(\s*\)/.exec(block) || [])[1] || null;
+// A string declared as a property of the Item: the script may name itself once and use that
+const declaredString = (name) => {
+    const re = new RegExp(`(?:readonly\\s+)?property\\s+(?:string|var)\\s+${name}\\s*:\\s*["']([^"']+)["']`);
+    return (re.exec(text) || [])[1] || null;
+};
+// What unloadScript is given: a literal, or a property holding one
+const unloadedName = () => {
+  const arg = (/unloadCall\.arguments\s*=\s*\[\s*([^\]]+?)\s*\]/.exec(text) || [])[1];
+  if (!arg) return null;
+  const literal = /^["'](.+)["']$/.exec(arg.trim());
+  if (literal) return literal[1];
+  const prop = /^(?:root\.)?(\w+)$/.exec(arg.trim());
+  return prop ? declaredString(prop[1]) : null;
+};
 
 test('kwin script: every call to the receiver reports a failure to one supervisor', () => {
     assert.ok(receiver.length >= 4, `only ${receiver.length} calls to the receiver found`);
-    const handlers = new Set();
-    for (const block of receiver) {
-        const m = /onFailed:\s*root\.(\w+)\(\)/.exec(block);
-        assert.ok(m, `a call to the receiver without onFailed (it would poll a dead receiver forever):\n${block}`);
-        handlers.add(m[1]);
-    }
-    assert.equal(handlers.size, 1, 'all calls must report to the same liveness supervisor');
+    const wired = receiver.map((b) => ({ id: callId(b), fn: failureFn(b) }));
+    const silent = wired.filter((c) => !c.fn).map((c) => c.id);
+    assert.deepEqual(silent, [], `these calls never report a failure (they would poll a dead receiver forever): ${silent.join(', ')}`);
+    const names = [...new Set(wired.map((c) => c.fn))];
+    // the message names every call, so a split supervisor is seen at once, not just counted
+    assert.equal(names.length, 1, `all calls must report to one liveness supervisor, got:\n${wired.map((c) => `  ${c.id}: ${c.fn}`).join('\n')}`);
 });
 
 test('kwin script: self-unload stops every timer and names this script', () => {
     const timers = [...text.matchAll(/id:\s*(\w+Timer)\b/g)].map((m) => m[1]);
     assert.ok(timers.length >= 5, `only ${timers.length} timers found`);
-    for (const id of timers) {
-        assert.match(text, new RegExp(`\\b${id}\\.stop\\(\\)`), `${id} is never stopped: it would outlive the receiver`);
-    }
-    assert.match(text, new RegExp(`unloadCall\\.arguments = \\["${SCRIPT_NAME}"\\]`));
-    assert.equal([...text.matchAll(/unloadCall\.call\(\)/g)].length, 1, 'one place unloads the script');
+    const running = timers.filter((id) => !new RegExp(`\\b${id}\\.stop\\s*\\(`).test(text));
+    assert.deepEqual(running, [], `these timers are never stopped, they would outlive the receiver: ${running.join(', ')}`);
+    assert.equal(unloadedName(), SCRIPT_NAME, 'unloadScript must be given the name the receiver loads the script under (a literal or a property holding it)');
+    assert.equal([...text.matchAll(/unloadCall\.call\s*\(/g)].length, 1, 'one place unloads the script');
 });
 
 test('kwin script: the build is substituted once, and the log says which build runs', () => {
     assert.equal([...text.matchAll(/"@BUILD@"/g)].length, 1, 'writeScript replaces exactly one placeholder');
     assert.equal(/script of patch/.test(text), false, 'the log must name the build, not a hand-written patch number');
-    assert.match(text, /root\.build/);
+    assert.ok(/root\.build/.test(text), 'the log must name the build (root.build)');
 });
 
 test('kwin script: the cursor gate follows the receiver contract (zone.step)', () => {
-    assert.match(text, /root\.zone\.step/, 'the sampling step is the receiver\'s to decide, not a constant here');
+    assert.ok(/root\.zone\.step/.test(text), 'the sampling step is the receiver\'s to decide, not a constant here');
 });
 
 // qmlformat parses the file and prints it; it does not need the KWin QML module to be installed.
