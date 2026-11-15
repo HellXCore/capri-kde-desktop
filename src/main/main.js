@@ -99,12 +99,22 @@ function readMemory() {
     return {};
   }
 }
+let saveMemoryTimer = null;
+let pendingMemoryPatch = {};
 function saveMemory(patch) {
-  try {
-    fs.writeFileSync(memoryFile(), JSON.stringify({ ...readMemory(), ...patch }));
-  } catch (err) {
-    console.error('[capri] could not save her memory:', err.message);
-  }
+  Object.assign(pendingMemoryPatch, patch);
+  if (saveMemoryTimer) clearTimeout(saveMemoryTimer);
+  
+  saveMemoryTimer = setTimeout(async () => {
+    try {
+      const current = readMemory();
+      await fs.promises.writeFile(memoryFile(), JSON.stringify({ ...current, ...pendingMemoryPatch }));
+    } catch (err) {
+      console.error('[capri] could not save her memory:', err.message);
+    }
+    pendingMemoryPatch = {};
+    saveMemoryTimer = null;
+  }, 1000); // Save no more than once per second
 }
 function forgetChats() {
   llm.resetClaude();
