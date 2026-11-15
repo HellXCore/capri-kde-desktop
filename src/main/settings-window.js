@@ -16,10 +16,9 @@ const BACKGROUND = '#fcee0a';
  *   preload: the settings preload (settings-preload.js); url: the settings page
  *   view(): what it shows (settings-view.js), asked when it opens and on update()
  *   area(): the work area to center it in, { x, y, width, height }
- *   focusApp(): brings the app forward first (macOS, where she has no Dock icon)
  *   onClosed(): after the window is gone
  */
-function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusApp = () => {}, onClosed = () => {} }) {
+function createSettingsWindow({ BrowserWindow, preload, url, view, area, onClosed = () => {} }) {
   let win = null;
   // its page can go before the window does (closing, quitting): nothing is sent to it then
   const alive = () => Boolean(win && !win.isDestroyed() && !win.webContents.isDestroyed?.());
@@ -34,7 +33,6 @@ function createSettingsWindow({ BrowserWindow, preload, url, view, area, focusAp
 
   function bringForward() {
     if (win.isMinimized()) win.restore();
-    focusApp();
     win.show();
     win.focus();
   }

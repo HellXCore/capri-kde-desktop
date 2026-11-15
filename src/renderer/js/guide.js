@@ -261,7 +261,7 @@ export class Guide {
       await this.ask({ face: 'wide', line: t.missing, quote: t.missingHow, actions: this.ok() });
       return;
     }
-    // Explorer comes up in front: a new window, or the one already showing that folder, brought back
+    // Dolphin/Nautilus comes up in front: a new window, or the one already showing that folder, brought back
     const front = () => capri.windows.wins.find((w) => w.id === capri.windows.fg) || null;
     const win = (await this.until(() => (capri.windows.fg !== before ? front() : null), 2500)) || front();
     const scene = this.sceneId;

@@ -8,8 +8,9 @@ const { watchPower, RECHECK_MS } = require('../src/main/power');
 
 // Her pause while your screen is locked or the computer asleep (CAPRI-07): main's power.js, the
 // renderer's pause.js and what stops and starts with it. These tests only feed stand-in
-// powerMonitor events and stand-in timers. They are not a check that a real lock or a real sleep
-// sends those events on macOS, Windows or Linux (docs/POWER_EVENTS.md says what's known of that).
+// events and stand-in timers. On Linux the lock events come from the session bus (main.js:
+// org.freedesktop.ScreenSaver ActiveChanged), and `isLocked` stands for the GetActive call it
+// makes: async, and unanswered when the bus is gone. Not a check that a real lock sends them.
 
 const url = (file) => pathToFileURL(path.resolve(__dirname, '../src/renderer/js', file)).href;
 const load = async (file) => {
@@ -58,15 +59,22 @@ function fakeTimers(start = 0) {
   return t;
 }
 
-// Electron's powerMonitor, stood in for: events, and what getSystemIdleState says
-function fakePower(idle = 'active') {
+// Electron's powerMonitor, stood in for: its events only. `locked` is what the screensaver
+// answers over D-Bus (main.js's isLocked probe); `asked` counts the calls, so a test can say
+// that nothing polls while she is not locked.
+function fakePower(locked = false) {
   const power = new EventEmitter();
-  power.idle = idle;
-  power.getSystemIdleState = () => power.idle;
+  power.locked = locked;
+  power.asked = 0;
+  power.isLocked = async () => {
+    power.asked += 1;
+    return power.locked;
+  };
   return power;
 }
-
-const EVENTS = ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'user-did-resign-active', 'user-did-become-active'];
+// the probe answers on the bus: its .then runs after the call that started it
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+const EVENTS = ['suspend', 'resume', 'lock-screen', 'unlock-screen'];
 
 // ---------- main: power.js ----------
 
@@ -74,14 +82,14 @@ test('power: several lock/unlock and sleep/wake cycles, one change each way, lis
   const power = fakePower();
   const timers = fakeTimers();
   const changes = [];
-  const watch = watchPower({ power, platform: 'darwin', onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  const watch = watchPower({ power, isLocked: power.isLocked, onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
   for (const e of EVENTS) assert.equal(power.listenerCount(e), 1, e);
   for (let i = 0; i < 5; i++) {
+    power.locked = true;
     power.emit('lock-screen');
-    power.idle = 'locked';
     power.emit('lock-screen'); // said twice: nothing more
     assert.equal(watch.away, true);
-    power.idle = 'active';
+    power.locked = false;
     power.emit('unlock-screen');
     assert.equal(watch.away, false);
     power.emit('suspend');
@@ -94,90 +102,141 @@ test('power: several lock/unlock and sleep/wake cycles, one change each way, lis
   for (const e of EVENTS) assert.equal(power.listenerCount(e), 0, e);
 });
 
-test('power: woken with the screen still locked, she stays paused until it is unlocked', () => {
-  const power = fakePower('locked');
+test('power: woken with the screen still locked, she stays paused until it is unlocked', async () => {
+  const power = fakePower(); // not locked when Capri starts
   const changes = [];
   const timers = fakeTimers();
-  power.idle = 'active';
-  const watch = watchPower({ power, platform: 'win32', onChange: (s) => changes.push(s), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  const watch = watchPower({ power, isLocked: power.isLocked, onChange: (s) => changes.push(s), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  power.locked = true;
   power.emit('lock-screen');
-  power.idle = 'locked';
   power.emit('suspend');
   power.emit('resume'); // the lock screen is up after the wake
+  await flush();
   assert.equal(watch.away, true);
   assert.deepEqual(watch.state().why, ['locked']);
-  power.idle = 'active';
+  power.locked = false;
   power.emit('unlock-screen');
   assert.equal(watch.away, false);
   assert.deepEqual(changes.map((s) => s.away), [true, false]);
   watch.stop();
 });
 
-test('power: an unlock event that never comes is caught by the recheck (macOS, Windows), one timer only while locked', () => {
+test('power: an unlock signal that never comes is caught by the recheck, one timer only while locked', async () => {
   const power = fakePower();
   const timers = fakeTimers();
   const changes = [];
-  const watch = watchPower({ power, platform: 'darwin', onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  const watch = watchPower({ power, isLocked: power.isLocked, onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  power.locked = true;
   power.emit('lock-screen');
-  power.idle = 'locked';
   assert.equal(timers.intervals, 1);
   power.emit('lock-screen');
-  power.emit('user-did-resign-active');
   assert.equal(timers.intervals, 1, 'never two rechecks');
   timers.advance(RECHECK_MS * 3);
+  await flush();
   assert.equal(watch.away, true, 'still locked: still paused');
-  power.emit('user-did-become-active');
-  power.idle = 'active'; // unlocked, but Electron never said so
+  power.locked = false; // unlocked, but the bus never said so
   timers.advance(RECHECK_MS);
+  await flush();
   assert.equal(watch.away, false);
   assert.equal(timers.intervals, 0);
   assert.deepEqual(changes, [true, false]);
   // and at a wake: locked before the sleep, not locked any more after it
+  power.locked = true;
   power.emit('lock-screen');
   power.emit('suspend');
+  power.locked = false;
   power.emit('resume');
+  await flush();
   assert.equal(watch.away, false);
   watch.stop();
 });
 
-test('power: Linux has no lock events in Electron and nothing is polled; sleep still pauses her', () => {
-  const power = fakePower('locked'); // whatever it says, it isn't asked
-  let asked = 0;
-  power.getSystemIdleState = () => {
-    asked++;
-    return 'locked';
-  };
+test('power: with no screensaver probe (no session bus) nothing is polled; the events still pause her', () => {
+  const power = fakePower(true); // whatever it says, it isn't asked
   const timers = fakeTimers();
   const changes = [];
-  const watch = watchPower({ power, platform: 'linux', onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
-  assert.equal(watch.away, false, 'not paused at start on the idle state alone');
+  const watch = watchPower({ power, onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  assert.equal(watch.away, false, 'not paused at start on the probe alone');
   power.emit('suspend');
   power.emit('resume');
-  power.emit('lock-screen'); // should a future Electron send it: it pauses her, without a recheck
-  assert.equal(timers.intervals, 0);
+  power.emit('lock-screen'); // main.js emits it from the bus
+  assert.equal(timers.intervals, 0, 'no probe: no recheck');
   power.emit('unlock-screen');
-  assert.equal(asked, 0);
+  assert.equal(power.asked, 0);
   assert.deepEqual(changes, [true, false, true, false]);
   watch.stop();
 });
 
-test('power: started behind the lock screen, paused from the start; --dev test pause holds until lifted', () => {
-  const power = fakePower('locked');
+test('power: started behind the lock screen, paused from the start; --dev test pause holds until lifted', async () => {
+  const power = fakePower(true);
   const timers = fakeTimers();
-  const watch = watchPower({ power, platform: 'darwin', later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  const watch = watchPower({ power, isLocked: power.isLocked, later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  await flush(); // the probe answers on the bus, not at once
   assert.equal(watch.away, true);
-  power.idle = 'active';
+  power.locked = false;
   power.emit('unlock-screen');
   assert.equal(watch.away, false);
   watch.test(true);
   timers.advance(RECHECK_MS * 4);
+  await flush();
   assert.equal(watch.away, true, 'the recheck leaves a test pause alone');
   watch.emit('suspend');
   watch.emit('resume');
+  await flush();
   assert.equal(watch.away, true);
   watch.test(false);
   assert.equal(watch.away, false);
   watch.stop();
+});
+
+test('power: the screensaver is asked only while she thinks the screen is locked', async () => {
+  const power = fakePower();
+  const timers = fakeTimers();
+  const watch = watchPower({ power, isLocked: power.isLocked, later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  await flush();
+  assert.equal(power.asked, 1, 'once at start');
+  timers.advance(RECHECK_MS * 5);
+  await flush();
+  assert.equal(power.asked, 1, 'nothing polls while she is not locked');
+  power.locked = true;
+  power.emit('lock-screen');
+  timers.advance(RECHECK_MS);
+  await flush();
+  assert.equal(power.asked, 2);
+  power.locked = false;
+  power.emit('unlock-screen');
+  timers.advance(RECHECK_MS * 5);
+  await flush();
+  assert.equal(power.asked, 2, 'unlocked: it stops asking');
+  watch.stop();
+});
+
+test('power: a probe that cannot reach the screensaver is not an unlock', async () => {
+  const power = fakePower(true);
+  const timers = fakeTimers();
+  const watch = watchPower({
+    power, isLocked: async () => { throw new Error('the bus is gone'); },
+    later: { every: timers.setInterval, stop: timers.clearInterval }, log() {},
+  });
+  await flush();
+  assert.equal(watch.away, false, 'unknown at start: not paused');
+  power.emit('lock-screen');
+  timers.advance(RECHECK_MS * 2);
+  await flush();
+  assert.equal(watch.away, true, 'an unanswered probe leaves her paused');
+  assert.equal(timers.intervals, 1, 'and it goes on asking');
+  watch.stop();
+});
+
+test('power: stopped before the screensaver answered, nothing changes after', async () => {
+  const power = fakePower(true);
+  const timers = fakeTimers();
+  const changes = [];
+  const watch = watchPower({ power, isLocked: power.isLocked, onChange: (s) => changes.push(s.away), later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  watch.stop();
+  await flush();
+  assert.deepEqual(changes, []);
+  assert.equal(timers.intervals, 0);
 });
 
 // ---------- renderer: pause.js ----------
@@ -265,23 +324,24 @@ test('panel: a reminder kept while paused and put out by a prompt is told it was
 test('power: a resume that never comes is made up for by the unlock (you are at it: it is awake)', () => {
   const power = fakePower();
   const timers = fakeTimers();
-  const watch = watchPower({ power, platform: 'win32', later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  const watch = watchPower({ power, isLocked: power.isLocked, later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  power.locked = true;
   power.emit('lock-screen');
-  power.idle = 'locked';
-  power.emit('suspend'); // Modern Standby: no resume after it
-  power.idle = 'active';
+  power.emit('suspend'); // a resume that never comes
+  power.locked = false;
   power.emit('unlock-screen');
   assert.equal(watch.away, false);
   assert.deepEqual(watch.state().why, []);
   assert.equal(timers.intervals, 0);
-  // and back from another user (macOS)
-  const mac = watchPower({ power: fakePower(), platform: 'darwin', later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
-  mac.emit('user-did-resign-active');
-  mac.emit('suspend');
-  mac.emit('user-did-become-active');
-  assert.equal(mac.away, false);
+  // the macOS fast-user-switching events are gone: not listened to, and nothing if one comes
+  const other = fakePower();
+  const plain = watchPower({ power: other, later: { every: timers.setInterval, stop: timers.clearInterval }, log() {} });
+  assert.equal(other.listenerCount('user-did-resign-active'), 0);
+  assert.equal(other.listenerCount('user-did-become-active'), 0);
+  plain.emit('user-did-resign-active');
+  assert.equal(plain.away, false);
   watch.stop();
-  mac.stop();
+  plain.stop();
 });
 
 // ---------- renderer: her panel ----------

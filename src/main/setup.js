@@ -1,8 +1,8 @@
 'use strict';
 
-// Setting her up with buttons, so nobody has to type in a terminal: Ollama (installed with winget,
-// woken up, a model fetched with its progress), an API key pasted in her panel (kept encrypted with
-// your Windows account), and Claude Code or Codex run through Ollama in a window of their own.
+// Setting her up with buttons: Ollama (woken up, a model fetched with its progress), an API key
+// pasted in her panel (kept encrypted through the session keyring: KWallet/libsecret), and Claude
+// Code or Codex run through Ollama in a terminal window of their own.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,12 +38,13 @@ function which(cmd) {
   return null;
 }
 
-
-// { running, installed, models, winget }: how far along Ollama is on this PC
+// { running, installed, models, canInstall }: how far along Ollama is on this PC.
+// canInstall: she can install it without a terminal. There is no such path on Linux —
+// installOllama() only prints the distro's commands, so the panel sends the user to the page.
 async function ollamaState() {
   const models = await ollama.models().catch(() => null);
-  if (models) return { running: true, installed: true, models, winget: false };
-  return { running: false, installed: Boolean(which('ollama')), models: null, winget: false };
+  if (models) return { running: true, installed: true, models, canInstall: false };
+  return { running: false, installed: Boolean(which('ollama')), models: null, canInstall: false };
 }
 
 // onLine(text) for what it prints.
@@ -139,8 +140,7 @@ async function launchInTerminal(integration) {
 
 function launchThroughOllama(integration) {
   if (!['claude', 'codex'].includes(integration)) return { ok: false };
-  if (process.platform === 'linux') return launchInTerminal(integration);
-  else return { ok: false };
+  return launchInTerminal(integration);
 }
 
 // API keys are kept encrypted in config.json through the session keyring (KWallet/libsecret):

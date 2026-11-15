@@ -494,8 +494,10 @@ export class Chat {
       const lines = [fmt(results.length === 1 ? t.fileFound : t.filesFound, { count: results.length, list })];
       // "…and open the folder" / "…and open it": done right away, on the newest one
       if (asked.then === 'folder' && (await this.host.openFile(results[0].path, true))) lines.push(fmt(t.folderOpened, { name: results[0].name }));
-      // (never a program or a script on its own: that one waits for its button)
-      const runs = /\.(exe|bat|cmd|ps1|vbs|vbe|js|jse|wsf|msi|reg|scr|com|jar|hta)$/i.test(results[0].name);
+      // (never a program or a script on its own: that one waits for its button).
+      // Linux: .sh/.AppImage/.desktop run something. The Windows ones stay — under Wine an
+      // .exe/.msi opened here would run too. Same list as RUNS in main/launch.js.
+      const runs = /\.(sh|bash|zsh|fish|ksh|csh|command|run|AppImage|desktop|exe|bat|cmd|ps1|vbs|vbe|js|jse|wsf|msi|reg|scr|com|jar|hta)$/i.test(results[0].name);
       if (asked.then === 'open' && !runs && (await this.host.openFile(results[0].path))) lines.push(fmt(t.opened, { app: results[0].name }));
       return { line: lines.join('\n'), face: 'smug', files: results };
     }

@@ -1547,7 +1547,18 @@ function main() {
     // and meanwhile her overlay pauses what's only for show (power.js; the macOS window watcher
     // pauses its helper on the same events itself: windows.js). Main goes on: the bridge still
     // takes Claude Code's events and passes them on, she shows what matters once you're back.
-    powerWatch = watchPower({ power: powerMonitor, onChange: sendPower });
+    let screenSaver = null;
+    powerWatch = watchPower({
+      power: powerMonitor, onChange: sendPower,
+      isLocked: async () => {
+        if (!screenSaver) return null;
+        const [on] = await screenSaver.call({
+          destination: 'org.freedesktop.ScreenSaver', path: '/org/freedesktop/ScreenSaver',
+          iface: 'org.freedesktop.ScreenSaver', member: 'GetActive',
+        });
+        return Boolean(on);
+      },
+    });
     require('./linux/dbus-mini').Bus.connect().then((bus) => {
       app.once('will-quit', () => bus.close());
       const owners = new Map();

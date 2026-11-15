@@ -16,14 +16,16 @@ const GAME_OVER = 8000;   // and gone this long: you're done
 
 const PHONE = /phone|iphone|apple|galaxy|samsung|pixel|xiaomi|redmi|poco|oneplus|huawei|honor|motorola|oppo|vivo|realme|nokia|xperia|android|mobile|t[ée]l[ée]phone|celular|телефон/i;
 const PAD = /controller|gamepad|manette|mando|controle|xbox|dualsense|dualshock|joy-?con|геймпад/i;
+const AUDIO = /headset|headphone|earbud|airpods|buds|speaker|наушник|гарнитур|колонк/i;
 
-// what was plugged in, from the name and the class Windows gives it
+// what was plugged in, from its name and the class linux/devices.js reports (WPD, Camera,
+// AudioEndpoint, Keyboard, Mouse, HIDClass, Bluetooth, DiskDrive, USB)
 function kindOf({ name = '', class: cls = '' }) {
   if (PAD.test(name)) return 'controller';
-  if (cls === 'DiskDrive' || cls === 'Volume') return 'drive'; // USB sticks: by their drive letter
+  if (cls === 'DiskDrive') return 'drive';
   if (cls === 'WPD' || PHONE.test(name)) return 'phone';
-  if (cls === 'AudioEndpoint' || cls === 'MEDIA') return 'audio';
-  if (cls === 'Camera' || cls === 'Image') return 'camera';
+  if (cls === 'AudioEndpoint' || AUDIO.test(name)) return 'audio';
+  if (cls === 'Camera') return 'camera';
   if (['Keyboard', 'Mouse', 'HIDClass'].includes(cls)) return 'input';
   return 'device';
 }
@@ -160,7 +162,8 @@ export class Pc {
     if (this.capri.free) this.capri.perform('hop');
   }
 
-  // what windows.ps1 sees: USB sticks by letter, devices plugged in or out, the game in front
+  // what the watcher sees: mounted removable drives by label, devices plugged in
+  // or out, the game in front (linux/devices.js, linux/games.js)
   onWindows({ usb = [], plug = null, game = null }) {
     if (!this.enabled) {
       this.drives = usb;

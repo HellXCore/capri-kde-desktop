@@ -66,15 +66,7 @@ function write(next) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     const text = JSON.stringify(next, null, 2);
     fs.writeFileSync(temp, text);
-    try {
-      fs.renameSync(temp, target);
-    } catch (err) {
-      // Windows: an antivirus or the search indexer holding the file open refuses the move over it
-      // (EPERM, EACCES, EBUSY). Written in place then, as it always was, rather than not at all.
-      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
-      fs.writeFileSync(target, text);
-      fs.rmSync(temp, { force: true });
-    }
+    fs.renameSync(temp, target);
   } catch (err) {
     try {
       fs.rmSync(temp, { force: true });

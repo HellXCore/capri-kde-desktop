@@ -11,8 +11,7 @@ const { screen, app } = require('electron');
 
 // The snapshots of a watcher, as seen from her window, to onUpdate. `toDip(win)`: the watcher's
 // physical-pixel rect -> Electron's screen DIPs ({ x, y, width, height }).
-// `ai`, `game`, `usb`, `plug` are used to report; they stay in the shape the overlay expects
-// (empty on Linux, except `ai` from the KWin script).
+// `ai`, `game`, `usb`, `plug` are used to report; (from the KWin script).
 // `origin(snapshot)`: where her window is, in the same DIPs; Electron's own answer unless this says
 // otherwise (native Wayland: a client does not know where its window is, KWin does).
 function createFeed({ overlay, onUpdate, toDip, origin = null }) {
@@ -122,7 +121,6 @@ function startLinuxWatch({ overlay, onUpdate, onState, onCommand, onPointer, are
 // onPointer({ x, y }): where the pointer is from the overlay's top left corner (native Wayland's input
 // region follows it); area(): where the overlay should be ({ x, y, width, height } in DIPs).
 function startWindowWatch({ overlay, onUpdate, onState = () => {}, onCommand = () => {}, onPointer = () => {}, area = null, session = null }) {
-  if (process.platform !== 'linux') return { stop() {}, refresh() {} };
   return startLinuxWatch({ overlay, onUpdate, onState, onCommand, onPointer, area, session });
 }
 

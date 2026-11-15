@@ -125,7 +125,7 @@ class UpdateController {
     this.update = null;
     this.set({ kind: 'checking' });
     try {
-      await previous?.close?.(); // a download of the previous check is let go (mac: its zip deleted)
+      await previous?.close?.(); // a download of the previous check is let go
       const update = await this.transport.check();
       if (update) {
         this.update = { ...update, notes: plainNotes(update.notes) };
@@ -225,8 +225,8 @@ function updaterTransport(updater) {
           }
         },
         async install() {
-          // silent (the one-click installer), and Capri starts again afterwards. An installer it
-          // can't start (no verified download, quitAndInstall already called) is only an 'error'
+          // AppImage: the downloaded image replaces the running one, and Capri starts again. An installer
+          // it can't start (no verified download, quitAndInstall already called) is only an 'error'
           // event, emitted synchronously, and nothing quits: said, not left "installing" forever.
           let failed = null;
           const onError = (err) => { failed = failed || err; };
@@ -275,11 +275,10 @@ function readFeed(file, { testBuild = false, readFile = fs.readFileSync } = {}) 
  * How this installation updates.
  * → { disabled: reason } | { mode: 'install', kind: 'appimage' } | { mode: 'notify', kind: 'package' }
  */
-function updateMode({ platform, packaged, smoke = false, env = {}, feed }) {
+function updateMode({ packaged, smoke = false, env = {}, feed }) {
   if (smoke) return { disabled: 'smoke' };
   if (!packaged) return { disabled: 'dev' };
   if (!feed) return { disabled: 'feed' };
-  if (platform !== 'linux') return { disabled: 'platform' };
   return env.APPIMAGE ? { mode: 'install', kind: 'appimage' } : { mode: 'notify', kind: 'package' };
 }
 
@@ -293,7 +292,7 @@ function startUpdates({ app, smoke = false, onChange = () => {}, log = (line) =>
   const packaged = app.isPackaged;
   const testBuild = Boolean(packaged && safeRequire(path.join(app.getAppPath(), 'package.json'))?.capriUpdaterTest === true);
   const feed = packaged ? readFeed(path.join(process.resourcesPath, 'app-update.yml'), { testBuild }) : null;
-  const mode = updateMode({ platform: process.platform, packaged, smoke, env: process.env, feed });
+  const mode = updateMode({ packaged, smoke, env: process.env, feed });
   if (mode.disabled) {
     log(`disabled (${mode.disabled})`);
     return new UpdateController({ disabled: mode.disabled, current: app.getVersion(), onChange });

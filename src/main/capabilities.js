@@ -13,10 +13,10 @@ const FEATURES = [
   'windowTracking', // other windows' geometry and the one in front (sitting on them, possession, demo)
   'appList',        // the apps with a window open, by name
   'appClose',       // closing one of them
-  'appLaunch',      // installed apps and games (Start menu, Steam, Epic)
+  'appLaunch',      // installed apps and games (.desktop entries, Steam)
   'mediaKeys',      // play/pause, next, volume, as media keys
-  'autostart',      // starting with the system
-  'ollamaInstall',  // installing Ollama herself (winget)
+  'autostart',      // starting with the system (Linux needs ~/.config/autostart: not implemented)
+  'ollamaInstall',  // installing Ollama with no terminal (no such path on Linux: see setup.js)
   'ollamaLaunch',   // Claude Code or Codex through Ollama, in a terminal window of its own
 ];
 

@@ -4,7 +4,7 @@
 // a window, by name; closing one the way its own close button does (it can still ask you to save),
 // and only if you ask again, forcing it. KDE on Wayland (the windows KWin reports: linux/apps-linux.js).
 
-// // [{ name, process, ids }]: one per program with a window open (linux/apps-linux.js)
+// [{ name, process, ids }]: one per program with a window open (linux/apps-linux.js)
 async function list() {
   return require('./linux/apps-linux').list();
 }

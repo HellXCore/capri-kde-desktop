@@ -17,8 +17,6 @@ const words = (query) => String(query || '').toLowerCase().normalize('NFKD').rep
 // never in the results: code dependencies, app data, git internals, the trash
 const JUNK = new Set(['node_modules', '.git', 'site-packages', '.cache', 'Trash']);
 const junk = (p) => p.split(path.sep).some((seg) => JUNK.has(seg));
-// files that are code, left out of a search by what's inside (any word shows up in some library)
-const CODE = ['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'map', 'lock', 'yml', 'yaml', 'py', 'css', 'html', 'md', 'txt', 'xml', 'log'];
 
 // Search redirected to baloo
 async function indexed(terms, exts) {

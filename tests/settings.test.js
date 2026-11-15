@@ -21,8 +21,8 @@ const facts = (extra = {}) => ({
   features: { autostart: true, windowTracking: false },
   autostart: false,
   screen: { index: 0, count: 2, width: 1512, height: 982 },
-  about: { version: '0.1.0', platform: 'darwin', arch: 'arm64', electron: '44.9.3' },
-  ...extra,
+  about: { version: '0.1.0', platform: 'linux', arch: 'x64', electron: '44.9.3', session: 'wayland' },
+   ...extra,
 });
 const row = (view, section, id) => view.sections.find((s) => s.id === section).rows.find((r) => r.id === id);
 
@@ -87,7 +87,9 @@ test('size, sound, the assistant watched and no assistant', () => {
   assert.equal(row(none, 'ai', 'assistant').value, TRAY.en.watchNone);
   assert.equal(row(none, 'ai', 'hooks'), undefined);
   assert.equal(row(settingsView(facts({ model: null })), 'ai', 'model').value, SETTINGS.en.none);
-  assert.equal(row(settingsView(facts()), 'about', 'system').value, 'macOS · arm64');
+  assert.equal(row(settingsView(facts()), 'about', 'system').value, 'Linux · x64 · wayland');
+  // Linux-only: an OS we no longer know is shown as it comes, not dressed up as Windows
+  assert.equal(row(settingsView(facts({ about: { platform: 'win32', arch: 'x64' } })), 'about', 'system').value, 'win32 · x64');
 });
 
 // A stand-in for Electron's BrowserWindow: enough of it for settings-window.js.
@@ -126,7 +128,6 @@ function fakeElectron() {
 
 function makeSettings(extra = {}) {
   const { FakeWindow, made } = fakeElectron();
-  let focusApp = 0;
   let closed = 0;
   const settings = createSettingsWindow({
     BrowserWindow: FakeWindow,
@@ -134,15 +135,14 @@ function makeSettings(extra = {}) {
     url: 'capri://app/src/renderer/settings.html',
     view: () => ({ title: 'Capri — Settings' }),
     area: () => ({ x: 100, y: 50, width: 1440, height: 900 }),
-    focusApp: () => { focusApp++; },
     onClosed: () => { closed++; },
     ...extra,
   });
-  return { settings, made, counts: () => ({ focusApp, closed }) };
+  return { settings, made, counts: () => ({ closed }) };
 }
 
 test('one window: opening again brings the same one forward with the focus', () => {
-  const { settings, made, counts } = makeSettings();
+  const { settings, made } = makeSettings();
   const win = settings.open();
   assert.equal(made.length, 1);
   assert.equal(win.visible, false); // shown once its page is ready, not blank
@@ -155,7 +155,6 @@ test('one window: opening again brings the same one forward with the focus', () 
   assert.equal(made.length, 1);
   assert.equal(win.minimized, false);
   assert.equal(win.focused, true);
-  assert.equal(counts().focusApp, 2);
 });
 
 test('a secure, ordinary window in the middle of the screen', () => {

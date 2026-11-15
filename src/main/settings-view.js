@@ -10,7 +10,7 @@ const { TRAY, SETTINGS, LANGS } = require('./labels');
 const { SCALES } = require('./settings-patch');
 
 const SECTIONS = ['general', 'behavior', 'ai', 'about'];
-const OS_NAMES = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+const OS_NAMES = { linux: 'Linux' };
 
 function sizeLabel(t, scale) {
   const named = [[t.small, 0.45], [t.medium, 0.6], [t.large, 0.8]].find(([, s]) => Math.abs(scale - s) < 0.01);

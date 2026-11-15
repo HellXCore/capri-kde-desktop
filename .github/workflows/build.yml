@@ -130,7 +130,7 @@ jobs:
           pattern: capri-linux-x64*
           merge-multiple: true
           path: release-assets
-      - name: Attach all platforms to draft
+      - name: Linux platforms to draft
         run: node scripts/draft-release.js release-assets
         env:
           GH_TOKEN: ${{ github.token }}

@@ -129,8 +129,6 @@ async function boot() {
 
   const updateShapes = () => {
     shapeRaf = 0;
-    if (config.platform !== 'linux') return;
-    
     if (capri.dragging) {
       if (!isDraggingShape) {
         isDraggingShape = true;
@@ -166,27 +164,18 @@ async function boot() {
   };
 
   const scheduleUpdateShapes = () => {
-    if (config.platform !== 'linux' || shapeRaf) return;
+    if (shapeRaf) return;
     shapeRaf = requestAnimationFrame(updateShapes);
   };
 
   panel.onLayout = scheduleUpdateShapes;
 
-  // Click-through everywhere except on her body, the panel and her biochip.
-  let interactive = false;
+  // Where the pointer is, for her hit tests and the chip's cursor. Whether the window takes the
+  // mouse is main's business (linux/input-region.js), from the rectangles updateShapes() sends.
   let mouse = null;
-  const setInteractive = (on) => {
-    if (on === interactive) return;
-    interactive = on;
-  };
   const onChip = () => Boolean(chip.visible && mouse && chip.contains(mouse.x, mouse.y, 0));
   const refreshHit = () => {
-    if (capri.dragging) return setInteractive(true);
-    if (!mouse) return setInteractive(false);
-    const r = panel.rect();
-    const onPanel = r && mouse.x >= r.left && mouse.x <= r.right && mouse.y >= r.top && mouse.y <= r.bottom;
-    document.body.style.cursor = onChip() ? 'pointer' : '';
-    return setInteractive(Boolean(onPanel || capri.hit(mouse.x, mouse.y) || onChip()));
+    document.body.style.cursor = !capri.dragging && onChip() ? 'pointer' : '';
   };
   // Her biochip: her eyes on it follow the pointer over it, and she comes out when you click it
   // (only then, so the pointer passing through that corner doesn't call her back).
@@ -235,7 +224,6 @@ async function boot() {
   let seen = null;
   let followedAt = -Infinity;
   let cursorPending = false;
-  let rearmedAt = -Infinity;
   let follow = null; // (pointer) => she may follow it to another screen (below)
   // (not while your screen is locked or the computer asleep: pause.js)
   pause.every(async () => {
@@ -243,28 +231,13 @@ async function boot() {
     cursorPending = true;
     const at = await host.cursor().catch(() => null);
     cursorPending = false;
-    const before = seen;
     seen = at;
     // Keep the multi-screen delay at two seconds even with Linux's faster hit testing.
-    if (config.platform !== 'linux' || performance.now() - followedAt >= WATCH_MS) {
+    if (performance.now() - followedAt >= WATCH_MS) {
       followedAt = performance.now();
       follow?.(at);
     }
-    if (config.platform === 'linux') {
-      scheduleUpdateShapes();
-      return;
-    }
-    if (!at?.inside) return;
-    const now = performance.now();
-    // the pointer is on her and she isn't clickable (its moves stopped reaching her): she is now
-    if (!interactive && now - lastMove > WATCH_MS) {
-      mouse = { x: at.x, y: at.y };
-      refreshHit();
-    }
-    if (!before?.inside || (at.x === before.x && at.y === before.y)) return;
-    if (now - lastMove < WATCH_MS * 1.5 || now - rearmedAt < 20000) return;
-    rearmedAt = now;
-    host.rearm();
+    scheduleUpdateShapes();
   }, WATCH_MS);
   // Linux: the faster beat only looks at her shapes again (panel, chip and mask come and go without a
   // mouse event, and the window ignores the mouse then). sendShape drops what did not change, so this

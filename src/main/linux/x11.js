@@ -1,8 +1,7 @@
 'use strict';
 
-// Linux X11 window tracking, the pure half: what `xprop` and `xwininfo` (x11-utils) print, turned
-// into the same snapshot the Windows helper sends (windows.ps1). No X connection here, so it is
-// tested on recorded output; x11-watch.js runs the tools.
+// Linux X11 window tracking, the pure half: what `xprop` and `xwininfo` (x11-utils) print.
+// No X connection here, so it is tested on recorded output; x11-watch.js runs the tools.
 //
 // EWMH gives what we need from the window manager: the window in front (_NET_ACTIVE_WINDOW), the
 // managed windows bottom to top (_NET_CLIENT_LIST_STACKING), the workspace shown, and per window
@@ -13,7 +12,7 @@ const ROOT_PROPS = ['_NET_ACTIVE_WINDOW', '_NET_CLIENT_LIST_STACKING', '_NET_CUR
 const WINDOW_PROPS = ['_NET_WM_WINDOW_TYPE', '_NET_WM_STATE', '_NET_WM_DESKTOP', '_NET_FRAME_EXTENTS', '_GTK_FRAME_EXTENTS', '_NET_WM_PID'];
 
 const ALL_DESKTOPS = 0xFFFFFFFF; // _NET_WM_DESKTOP of a window shown on every workspace
-const MAX_WINDOWS = 40;          // as many as the Windows helper sends
+const MAX_WINDOWS = 40;
 const MIN_W = 200;               // smaller ones are no seat (same as Windows)
 const MIN_H = 120;
 
@@ -92,7 +91,7 @@ function parseWindow(text) {
 
 // `xwininfo -root -tree`: every window's absolute position and size, by id. Names may hold
 // anything, so a line is read from its end: "  800x600+0+0  +100+50" (the last pair is absolute).
-//      0x1e00004 "Terminal": ("gnome-terminal-server" "Gnome-terminal")  800x600+0+0  +100+50
+// 0x1e00004 "Terminal": ("gnome-terminal-server" "Gnome-terminal")  800x600+0+0  +100+50
 function parseTree(text) {
   const rects = new Map();
   const re = /^\s*(0x[0-9a-f]+)\b.*?\s(\d+)x(\d+)[+-]-?\d+[+-]-?\d+\s+([+-]-?\d+)([+-]-?\d+)\s*$/i;
@@ -135,7 +134,7 @@ function isSeat(info, { desktop }) {
 }
 
 // The snapshot, in the Windows helper's format (physical pixels of the X screen, front first):
-//   { fg, taskbar, ai, game, usb, plug, wins: [{ id, x, y, w, h, max }] }
+// { fg, taskbar, wins: [{ id, x, y, w, h, max }] }
 // `infos`: id -> parseWindow(); `rects`: parseTree(); `self`: { id } of Capri's overlay.
 // What only Windows reports (other AIs in front, games, USB sticks) stays empty.
 function buildSnapshot({ root, infos, rects, self = {} }) {

@@ -116,15 +116,16 @@ export class Setup {
     return res.error === 'stopped' ? false : this.fail(this.t.pullFailed, res.error);
   }
 
-  // Ollama installed (with winget, on your click) and awake. True once it answers.
+  // Ollama installed (herself where she can, else the download page) and awake. True once it answers.
   async ollamaUp() {
     const t = this.t;
     let state = await this.host.ollamaState();
     if (state.running) return true;
     if (!state.installed) {
-      if (!state.winget) {
+      if (!state.canInstall) {
         const id = await this.guide.ask({
-          face: 'aside', line: t.noWinget, quote: t.noWingetHow,
+          // || — as long as labels.js is not renamed, the panel will not remain empty
+          face: 'aside', line: t.noInstaller || t.noWinget, quote: t.noInstallerHow || t.noWingetHow,
           actions: [{ id: 'site', label: t.site, primary: true }, { id: 'later', label: t.later }],
         });
         if (id === 'site') this.host.openOllama();

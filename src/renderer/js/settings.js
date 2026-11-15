@@ -98,7 +98,7 @@ function updateText(st) {
   const t = view.text;
   const v = (text) => (text || '').replaceAll('{version}', st.version || '');
   switch (st.kind) {
-    case 'disabled': return { feed: t.updOffFeed, platform: t.updOffPlatform, unconfigured: t.updOffPlatform }[st.reason] || t.updOffDev;
+    case 'disabled': return { feed: t.updOffFeed, unconfigured: t.updOffPlatform }[st.reason] || t.updOffDev;
     case 'idle': return t.updIdle;
     case 'checking': return t.updChecking;
     case 'current': return t.updCurrent;

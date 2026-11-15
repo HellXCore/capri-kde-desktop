@@ -124,14 +124,13 @@ async function openaiChat(p, { model, messages }, onDelta, signal) {
 // The prompt goes in on stdin, never on the command line: the shell (needed for an npm claude.cmd)
 // only ever sees fixed arguments.
 
-const quote = (s) => (process.platform === 'win32' ? `"${s}"` : s); // cmd joins the arguments
 // its session id, picked here so her hooks can tell its events from your other sessions' (main.js)
 let claudeSession = null;
 let claudeStarted = false; // each message after the first continues the same conversation
 
 function claudeVersion() {
   return new Promise((resolve, reject) => {
-    execFile('claude', ['--version'], { shell: process.platform === 'win32', timeout: 10000 }, (err, out) => (
+    execFile('claude', ['--version'], { timeout: 10000 }, (err, out) => (
       err ? reject(new Error('Claude Code not found (is `claude` on your PATH?)')) : resolve(out.trim())));
   });
 }
@@ -142,18 +141,15 @@ function claudeChat(cfg, text, persona, onDelta, signal) {
   fs.writeFileSync(personaFile, persona);
   const args = ['-p', '--output-format', 'stream-json', '--verbose',
     '--permission-mode', CLAUDE_MODES.includes(cfg.claudeMode) ? cfg.claudeMode : 'default',
-    '--append-system-prompt-file', quote(personaFile)];
+    '--append-system-prompt-file', personaFile];
   if (!claudeSession) claudeSession = randomUUID();
   args.push(claudeStarted ? '--resume' : '--session-id', claudeSession);
   return new Promise((resolve, reject) => {
     const child = spawn('claude', args, {
       cwd: cfg.claudeCwd || os.homedir(),
-      shell: process.platform === 'win32',
-      windowsHide: true,
-      detached: process.platform !== 'win32',
+      detached: true, // process-group: kill(-pid)
     });
     const kill = () => {
-      if (process.platform === 'win32') return execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], () => {});
       try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
     };
     signal.addEventListener('abort', kill, { once: true });

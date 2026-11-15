@@ -158,9 +158,8 @@ test('release notes become plain text, and only this repository\'s release pages
 
 test('which installations update, and how', () => {
   const feed = { provider: 'github' };
-  assert.deepEqual(updateMode({ platform: 'linux', packaged: true, env: { APPIMAGE: '/home/u/Capri.AppImage' }, feed }), { mode: 'install', kind: 'appimage' });
-  assert.deepEqual(updateMode({ platform: 'linux', packaged: true, env: {}, feed }), { mode: 'notify', kind: 'package' });
-  assert.deepEqual(updateMode({ platform: 'freebsd', packaged: true, feed }), { disabled: 'platform' });
+  assert.deepEqual(updateMode({ packaged: true, env: { APPIMAGE: '/home/u/Capri.AppImage' }, feed }), { mode: 'install', kind: 'appimage' });
+  assert.deepEqual(updateMode({ packaged: true, env: {}, feed }), { mode: 'notify', kind: 'package' });
 });
 
 test('only this repository\'s GitHub feed, or a loopback feed in a test build, is accepted', () => {
