@@ -5,7 +5,8 @@
 // your Windows account), and Claude Code or Codex run through Ollama in a window of their own.
 
 const fs = require('node:fs');
-const { spawn, execFile } = require('node:child_process');
+const path = require('node:path');
+const { spawn} = require('node:child_process');
 const { safeStorage } = require('electron');
 const ollama = require('./ollama');
 
@@ -26,23 +27,23 @@ const KEY_PAGES = {
 };
 
 function which(cmd) {
-  return new Promise((resolve) => {
-    execFile( 'which', [cmd], { windowsHide: true, timeout: 5000 }, (err, out) => (
-      resolve(err ? null : String(out).split(/\r?\n/)[0].trim() || null)));
-  });
+  if (!cmd) return null;
+  const ok = (f) => { try { fs.accessSync(f, fs.constants.X_OK); return true; } catch { return false; } };
+  if (path.isAbsolute(cmd)) return ok(cmd) ? cmd : null;
+  for (const dir of (process.env.PATH || '').split(':')) {
+    if (!dir) continue;
+    const f = path.join(dir, cmd);
+    if (ok(f)) return f;
+  }
+  return null;
 }
 
-// Ollama's own app (it runs the server from the tray) and its command, where its installer puts them
-function ollamaFiles() {
-  return { app: '', cli: '' };
-}
 
 // { running, installed, models, winget }: how far along Ollama is on this PC
 async function ollamaState() {
   const models = await ollama.models().catch(() => null);
   if (models) return { running: true, installed: true, models, winget: false };
-  const [onPath, winget] = await Promise.all([which('ollama'), null]);
-  return { running: false, installed: fs.existsSync(ollamaFiles().cli) || Boolean(onPath), models: null, winget: Boolean(winget) };
+  return { running: false, installed: Boolean(which('ollama')), models: null, winget: false };
 }
 
 // onLine(text) for what it prints.
@@ -70,10 +71,7 @@ function installOllama(onLine) {
 
 // Wakes Ollama up (its app, else `ollama serve` in the background) and waits for it to answer.
 async function startOllama() {
-  const { app, cli } = ollamaFiles();
-  const run = (file, args) => spawn(file, args, { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
-  if (fs.existsSync(app)) run(app, []);
-  else run(fs.existsSync(cli) ? cli : 'ollama', ['serve']);
+  spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
   for (let i = 0; i < 40; i++) {
     if (await ollama.models().catch(() => null)) return { ok: true };
     await new Promise((r) => setTimeout(r, 750));
@@ -145,7 +143,8 @@ function launchThroughOllama(integration) {
   else return { ok: false };
 }
 
-// API keys are kept encrypted in config.json, with your Windows account (DPAPI): "enc:<base64>".
+// API keys are kept encrypted in config.json through the session keyring (KWallet/libsecret):
+// "enc:<base64>". Without one, safeStorage is unavailable and the key is stored as plain text.
 function sealKey(key) {
   return safeStorage.isEncryptionAvailable() ? `enc:${safeStorage.encryptString(key).toString('base64')}` : key;
 }

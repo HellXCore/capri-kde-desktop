@@ -14,16 +14,15 @@ const found = new Set(); // what a search showed you: the only paths she opens f
 const words = (query) => String(query || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
   .split(/[^\p{L}\p{N}.]+/u).filter((w) => w.length >= 2).slice(0, 5);
 
-// never in the results: code dependencies, app data, git internals
-const JUNK = ['node_modules', '\\.git\\', '\\site-packages\\', '\\.cache\\', '\\share\\Trash\\'];
-const junk = (p) => JUNK.some((j) => p.replaceAll('/', '\\').includes(j));
+// never in the results: code dependencies, app data, git internals, the trash
+const JUNK = new Set(['node_modules', '.git', 'site-packages', '.cache', 'Trash']);
+const junk = (p) => p.split(path.sep).some((seg) => JUNK.has(seg));
 // files that are code, left out of a search by what's inside (any word shows up in some library)
 const CODE = ['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'map', 'lock', 'yml', 'yaml', 'py', 'css', 'html', 'md', 'txt', 'xml', 'log'];
 
 // Search redirected to baloo
 async function indexed(terms, exts) {
-  if (process.platform === 'linux') return require('./linux/baloo').search(terms, exts, { home: app.getPath('home'), limit: LIMIT * 3 });
-  else return null;
+  return require('./linux/baloo').search(terms, exts, { home: app.getPath('home'), limit: LIMIT * 3 });
 }
 
 // The walk, when the index isn't there: your usual folders, a few levels down, by name and type.
@@ -91,8 +90,8 @@ async function open(file, { reveal = false } = {}) {
 // A screenshot of the screen she's on, full size, saved in Pictures › Screenshots (made if needed).
 async function screenshot(display) {
   const d = display || screen.getPrimaryDisplay();
-  // Linux: Spectacle takes it from KWin (desktopCapturer, under XWayland, sees only the X windows)
-  const shot = process.platform === 'linux' ? await require('./linux/screenshot').grab({ multi: screen.getAllDisplays().length > 1 }) : null;
+  // Spectacle takes it from KWin (desktopCapturer, under XWayland, sees only the X windows)
+  const shot = await require('./linux/screenshot').grab({ multi: screen.getAllDisplays().length > 1 });
   let png = shot && shot.toPNG();
   if (!png) {
     const k = d.scaleFactor || 1;

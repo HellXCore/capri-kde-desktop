@@ -4,19 +4,9 @@
 // a window, by name; closing one the way its own close button does (it can still ask you to save),
 // and only if you ask again, forcing it. KDE on Wayland (the windows KWin reports: linux/apps-linux.js).
 
-const { execFile } = require('node:child_process');
-
-// never these: the desktop itself, Windows' own pieces, her (Capri), Claude (she watches it) and
-// Ollama (she talks through it)
-const KEEP = new Set([
-  'explorer', 'applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost',
-  'searchhost', 'searchapp', 'lockapp', 'dwm', 'capri', 'electron', 'claude', 'codex', 'ollama', 'ollama app',
-]);
-
-// [{ name, process, ids }]: one per program with a window open. Redirected to apps-linux method
+// // [{ name, process, ids }]: one per program with a window open (linux/apps-linux.js)
 async function list() {
-  if (process.platform === 'linux') return require('./linux/apps-linux').list();
-  else return [];
+  return require('./linux/apps-linux').list();
 }
 
 const simple = (text) => String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -41,8 +31,7 @@ async function find(wanted) {
 // Resolves with what's left: { running } (true when it stayed open, or hid in the tray), and
 // { unsupported } where she can't close apps. Redirected to apps-linux method
 async function close(name, { force = false } = {}) {
-  if (process.platform === 'linux') return require('./linux/apps-linux').close(name, { force });
-  else return { running: false, unsupported: true }; // never "closed" when nothing was
+  return require('./linux/apps-linux').close(name, { force });
 }
 
 module.exports = { list, find, close};

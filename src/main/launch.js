@@ -6,11 +6,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { app, shell } = require('electron');
 
-const LINUX = process.platform === 'linux';
 // not things to open from a chat: uninstallers, help pages and the like
 const SKIP = /uninstall|désinstaller|desinstalar|deinstall|readme|documentation|release notes|support center|website|manual/i;
 const STEAM_SKIP = /redistributable|dedicated server|steamworks/i;
@@ -35,7 +33,7 @@ async function launchables() {
     items.push(item);
   };
   // A game's own entry wins over a shortcut to it
-  for (const game of [...steamGames(await steamRoot()), ...epicGames()]) add(game);
+  for (const game of steamGames(await steamRoot())) add(game);
   for (const e of require('./linux/desktop-entries').list()) {
       add({ name: e.name, kind: 'app', id: e.id });
       // In a translated desktop you may still say the name it has everywhere ("konsole", not "Консоль")
@@ -89,7 +87,7 @@ function steamGames(root) {
 }
 
 // Epic's games, from its launcher's manifests (not the Unreal Engine plugins it also keeps there)
-function epicGames() {
+/*function epicGames() {
   if (process.platform !== 'win32') return []; // TODO: Heroic/Lutris manifests
   const dir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests');
   let files = [];
@@ -109,7 +107,7 @@ function epicGames() {
     }
   }
   return games;
-}
+}*/
 
 // The one of `items` named in `text` (your message, or the name in her tag): all the words of its
 // name in it, else at least half of them; the closest wins. null if nothing fits well enough.
@@ -202,20 +200,15 @@ async function launch({ kind, id } = {}) {
   const item = (await launchables()).find((i) => i.kind === kind && i.id === id);
   if (!item) throw new Error('not found');
   if (kind === 'steam') return shell.openExternal(`steam://rungameid/${id}`);
-  if (LINUX) {
-    if (kind !== 'app') throw new Error('not found');
-    await require('./linux/desktop-entries').launch(id);
-    return undefined;
-  }
-  if (kind === 'epic') return shell.openExternal(`com.epicgames.launcher://apps/${encodeURIComponent(id)}?action=launch&silent=true`);
-  spawn('explorer.exe', [`shell:AppsFolder\\${id}`], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+  //if (kind === 'epic') return shell.openExternal(`com.epicgames.launcher://apps/${encodeURIComponent(id)}?action=launch&silent=true`);
+  if (kind !== 'app') throw new Error('not found'); // Heroic/Lutris
+  await require('./linux/desktop-entries').launch(id);
   return undefined;
 }
 
 //Redirected to linux media method
 async function media(action) {
-  if (LINUX) return require('./linux/media').media(action);
-  else return false;
+  return require('./linux/media').media(action);
 }
 
 // A Spotify search for it: in the app if it's installed, else on the web.
