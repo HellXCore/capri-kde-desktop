@@ -826,9 +826,7 @@ Item {
     function shutdown() {
         pollTimer.stop(); cursorTimer.stop(); netTimer.stop();
         flushTimer.stop(); moveTimer.stop(); moveIdleTimer.stop(); giveBackTimer.stop();
-        nloadCall.arguments = ["capri-windows"];
         unloadCall.call();
-
     }
 
     DBusCall {
