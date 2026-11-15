@@ -201,6 +201,9 @@ function startKWinWatch({
   // what reads /sys and /proc (the tests give their own): watchDevices(onChange) -> the watcher
   watchDevices = (onChange) => createDevices({ onChange }), gameOf = createGameWatcher(),
   units = process.env.CAPRI_KWIN_UNITS === 'physical' ? 'physical' : 'logical',
+  // the entire "handshake" process with KWin is tested without a graphical shell
+  // (a custom implementation is used in tests/kwin-bridge-load.test.js)
+  connect = () => Bus.connect(), firstUpdateMs = FIRST_UPDATE_MS,
   log = console,
 }) {
   const noop = { stop() {} };
@@ -326,7 +329,7 @@ function startKWinWatch({
   const start = async () => {
     watched.start();
     lastSelfKey = '';
-    bus = await Bus.connect();
+    bus = await connect();
     bus.onClose = (err) => {
       if (!stopped) fail(`lost the session bus (${err?.message ?? err})`);
     };
@@ -417,7 +420,7 @@ function startKWinWatch({
       if (running) return;
       fail('the KWin script sent nothing. If the journal says "Component failed to load", the QML ' 
         + `never started: ${file} (journalctl --user -b | grep -i capri-windows)`);
-    }, FIRST_UPDATE_MS);
+    }, firstUpdateMs);
   };
 
   start().catch((err) => fail(err?.message ?? String(err)));
@@ -478,4 +481,7 @@ function startKWinWatch({
 // the running watcher, or null (apps-linux.js, windows.js)
 const current = () => (active && active.ready ? active : null);
 
-module.exports = { startKWinWatch, writeScript, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels, BUS_NAME, OBJECT_PATH, SCRIPT_NAME };
+module.exports = {
+  startKWinWatch, writeScript, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels,
+  BUS_NAME, OBJECT_PATH, SCRIPT_NAME, ZONE_PAD, ZONE_STEP,
+};

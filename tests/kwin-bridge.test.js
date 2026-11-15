@@ -1,7 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fromPayload, toXPixels, startKWinWatch } = require('../src/main/linux/kwin-bridge');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {
+  fromPayload, toXPixels, startKWinWatch, writeScript, windowsOf, parseCursor, parseMove, applyMove, SCRIPT_NAME,
+} = require('../src/main/linux/kwin-bridge');
 
 const win = (types = [], state = []) => ({ types, state, desktop: null, pid: 1 });
 const payload = () => ({
@@ -24,6 +29,19 @@ const payload = () => ({
   outputs: [{ x: 0, y: 0, w: 1920, h: 1080, s: 1 }],
   ai: ['chatgpt', 5],
 });
+// KWin keeps the compiled QML of a path it has loaded, and the engine also caches the directory it
+// loaded from: a file created in it afterwards fails its exact-name check ("File name case mismatch")
+// until KWin restarts. One directory per build, a fixed name inside it — these tests hold that.
+const scratch = (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-kwin-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+};
+const sourceWith = (t, text) => {
+  const file = path.join(scratch(t), 'src.qml');
+  fs.writeFileSync(file, text);
+  return file;
+};
 
 test('kwin payload: seats in the Windows helper format, front first, others left out', () => {
   const snap = fromPayload(payload());
@@ -76,4 +94,67 @@ test('kwin watch: off outside a KDE Wayland session, no bus touched', () => {
     if (before === undefined) delete process.env.XDG_CURRENT_DESKTOP;
     else process.env.XDG_CURRENT_DESKTOP = before;
   }
+});
+
+// ---------- the script on disk ----------
+test('kwin script: one directory per build, a fixed name inside, the build told to the script', (t) => {
+  const dir = path.join(scratch(t), 'kwin');
+  const source = sourceWith(t, 'Item { property string build: "@BUILD@" }\n');
+  const a = writeScript(dir, source);
+  assert.equal(path.basename(a.file), `${SCRIPT_NAME}.qml`);
+  assert.equal(path.basename(path.dirname(a.file)), a.build);
+  const written = fs.readFileSync(a.file, 'utf8');
+  assert.equal(written.includes('"@BUILD@"'), false, 'the placeholder was left in the script');
+  assert.ok(written.includes(`"${a.build}"`));
+
+  // a changed text: a new directory, and the old one is gone (nothing was loaded from it here)
+  fs.writeFileSync(source, 'Item { property string build: "@BUILD@"; property int x: 1 }\n');
+  const b = writeScript(dir, source);
+  assert.notEqual(b.build, a.build);
+  assert.ok(fs.existsSync(b.file));
+  assert.equal(fs.existsSync(a.file), false);
+
+  // the same text again: the same path (it is the same script, KWin may have it cached)
+  assert.equal(writeScript(dir, source).file, b.file);
+});
+
+test('kwin script: the flat hash-named files of the old scheme are cleaned up, nothing else is', (t) => {
+  const dir = path.join(scratch(t), 'kwin');
+  fs.mkdirSync(dir, { recursive: true });
+  const legacy = ['capri-windows.qml', 'capri-windows-deadbeef.qml'].map((f) => path.join(dir, f));
+  for (const f of legacy) fs.writeFileSync(f, 'Item {}');
+  const keep = path.join(dir, 'notes.txt');
+  fs.writeFileSync(keep, 'not ours');
+  writeScript(dir, sourceWith(t, 'Item { property string build: "@BUILD@" }\n'));
+  for (const f of legacy) assert.equal(fs.existsSync(f), false, `${path.basename(f)} was left behind`);
+  assert.ok(fs.existsSync(keep));
+});
+
+// ---------- the rest of what the receiver reads ----------
+test('kwin windows: the list of open apps keeps its shape, garbage is dropped', () => {
+  const found = windowsOf({ infos: {
+    10: { pid: 5, cls: 'org.kde.konsole', app: 'org.kde.konsole.desktop', types: ['NORMAL'], state: [] },
+    11: { pid: 'x', cls: null, app: null, types: 'no', state: null },
+    oops: 'not a window',
+  } });
+  assert.equal(found.length, 2);
+  assert.deepEqual(found[0], { id: 10, pid: 5, cls: 'org.kde.konsole', app: 'org.kde.konsole.desktop', types: ['NORMAL'], state: [] });
+  assert.deepEqual(found[1], { id: 11, pid: null, cls: '', app: '', types: [], state: [] });
+});
+
+test('kwin cursor: global point, and the same point from her own corner', () => {
+  assert.deepEqual(parseCursor('123,456'), { x: 123, y: 456 });
+  assert.deepEqual(parseCursor('-10,-20,30,40'), { x: -10, y: -20, rel: { x: 30, y: 40 } });
+  for (const bad of ['', '1,2,3', 'a,b', '1,2,3,4,5', '1234567,1']) assert.equal(parseCursor(bad), null, bad);
+});
+
+test('kwin move: the light channel, and what it changes in the snapshot', () => {
+  assert.deepEqual(parseMove('10,-5,6,800,600'), { id: 10, x: -5, y: 6, w: 800, h: 600 });
+  assert.equal(parseMove('10,0,0,0,600'), null); // no rectangle
+  assert.equal(parseMove('nope'), null);
+  const snap = fromPayload(payload());
+  const moved = applyMove(snap, { id: 10, x: 5, y: 6, w: 800, h: 600 }, [], 'logical');
+  assert.deepEqual(moved.wins.find((w) => w.id === 10), { id: 10, x: 5, y: 6, w: 800, h: 600, max: false });
+  assert.equal(applyMove(snap, { id: 10, x: 100, y: 80, w: 800, h: 600 }, [], 'logical'), null); // it did not move
+  assert.equal(applyMove(snap, { id: 99, x: 0, y: 0, w: 10, h: 10 }, [], 'logical'), null);      // not in the list
 });
