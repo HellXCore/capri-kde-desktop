@@ -192,6 +192,26 @@ function fitOverlay() {
   inputRegion?.reapply();
   overlay.webContents.send('overlay:resize', { width: area.width, height: area.height, gap });
 }
+// Compositor owns the overlay's geometry in native Wayland. Electron's setBounds is a request;
+// the KWin script applies it (selfRect) and reports the real place back (feed.origin). One
+// authority for every read, and one wait for confirmation — no fixed-delay guesses.
+function overlayBounds() {
+  return windowWatch?.origin?.() || overlay.getBounds();
+}
+async function waitForOverlay(area, timeoutMs = 1500) {
+  if (caps.session !== 'wayland') {
+    await new Promise((r) => setTimeout(r, 60));
+    setOverlayBounds(area);
+    return overlay.getBounds();
+  }
+  const t0 = Date.now();
+  for (;;) {
+    const o = windowWatch?.origin?.();
+    if (o && o.x === area.x && o.y === area.y && o.width === area.width && o.height === area.height) return o;
+    if (Date.now() - t0 >= timeoutMs) return o || overlay.getBounds();
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 // The pointer reaches her click-through window through a mouse hook, and Windows drops a hook that
 // doesn't answer in time without a word (waking from sleep, a locked screen, a stall): she can't be
@@ -948,13 +968,13 @@ function registerIpc() {
     // point goes stale over native Wayland ones; the KWin script knows where it really is
     const p = windowWatch?.cursor?.() || screen.getCursorScreenPoint();
     // native Wayland: a client does not know where its window is, KWin does
-    const b = windowWatch?.origin?.() || overlay.getBounds();
+    const b = overlayBounds();
     const inside = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
     return { x: p.x - b.x, y: p.y - b.y, inside, display: displayAt(p).id };
   });
   // your screens (their bounds), the one she's on, and where her window is
   ipcMain.handle('screens:list', () => {
-    const o = overlay.getBounds();
+    const o = overlayBounds();
     return {
       current: targetDisplay().id,
       origin: { x: o.x, y: o.y },
@@ -964,9 +984,7 @@ function registerIpc() {
   ipcMain.handle('screens:move', async (_e, id) => {
     const area = moveOverlay(id);
     if (!area) return null;
-    await new Promise((r) => setTimeout(r, 60));
-    setOverlayBounds(area); // after Windows places it on the new screen, if it hasn’t already done so
-    const o = overlay.getBounds();
+    const o = await waitForOverlay(area);
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcMain.handle('config:get', () => rendererConfig());
