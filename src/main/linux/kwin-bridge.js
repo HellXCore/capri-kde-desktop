@@ -266,7 +266,17 @@ function startKWinWatch({
 
   const fail = (why) => {
     if (stopped) return;
+    stopped = true;
     log.error(`[capri] kwin watch: ${why}`);
+    clearTimeout(firstTimer);
+    clearTimeout(moveTimer);
+    watched.stop();
+    if (active === api) active = null;
+    if (bus) {
+      bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] })
+      .catch(() => {})
+      .finally(() => bus.close());
+    }
     onState(false);
   };
 
@@ -330,6 +340,7 @@ function startKWinWatch({
     watched.start();
     lastSelfKey = '';
     bus = await connect();
+    if (stopped) { bus.close(); return; }
     bus.onClose = (err) => {
       if (!stopped) fail(`lost the session bus (${err?.message ?? err})`);
     };
