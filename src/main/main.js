@@ -1547,9 +1547,23 @@ function main() {
     powerWatch = watchPower({ power: powerMonitor, onChange: sendPower });
     require('./linux/dbus-mini').Bus.connect().then((bus) => {
       app.once('will-quit', () => bus.close());
-      const onActive = (msg) => powerWatch?.emit(msg.buf.readUInt32LE(msg.bodyStart) ? 'lock-screen' : 'unlock-screen');
-      bus.subscribe({ iface: 'org.freedesktop.ScreenSaver', member: 'ActiveChanged' }, onActive).catch(() => {});
-      bus.subscribe({ iface: 'org.gnome.ScreenSaver', member: 'ActiveChanged' }, onActive).catch(() => {});
+      const owners = new Map();
+      let resolvedAt = 0;
+      const onActive = (name) => async (msg) => {
+        if (msg.signature !== 'b' || msg.buf.length < msg.bodyStart + 4) return;
+        let owner = owners.get(name);
+        if (owner === undefined || (owner !== msg.sender && Date.now() - resolvedAt > 5000)) {
+          resolvedAt = Date.now();
+          owner = await bus.getNameOwner(name).catch(() => null);
+          owners.set(name, owner);
+        }
+        if (owner && msg.sender !== owner) return;
+        powerWatch?.emit(msg.buf.readUInt32LE(msg.bodyStart) ? 'lock-screen' : 'unlock-screen');
+      };
+      bus.subscribe({ iface: 'org.freedesktop.ScreenSaver', member: 'ActiveChanged' },
+        onActive('org.freedesktop.ScreenSaver')).catch(() => {});
+      bus.subscribe({ iface: 'org.gnome.ScreenSaver', member: 'ActiveChanged' },
+        onActive('org.gnome.ScreenSaver')).catch(() => {});
     }).catch(() => {});
   });
 
