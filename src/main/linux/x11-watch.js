@@ -11,6 +11,7 @@
 
 const { execFile } = require('node:child_process');
 const x11 = require('./x11');
+const { createNativeX11 } = require('./x11-native');
 
 const INTERVAL = 250;       // ms between polls
 const IDLE_INTERVAL = 1500;  // ms between polls once IDLE_AFTER polls in a row found nothing new
@@ -55,6 +56,14 @@ function startX11Watch({
     return noop;
   }
 
+  // One persistent libX11 connection instead of a process per read (up to 80 xprop spawns per
+  // refresh). null without koffi/libX11: the tools below stay as the fallback. Tests inject
+  // their own `run` — then the tools path is what is being tested. CAPRI_X11_TOOLS=1 forces it.
+  const native = run === execTool && process.env.CAPRI_X11_TOOLS !== '1'
+    ? createNativeX11({ log })
+    : null;
+  log.log(`[capri] window watch: reads via ${native ? 'libX11 (persistent connection)' : 'xprop/xwininfo (fallback)'}`);
+
   let stopped = false;
   let handle = null;
   let failures = 0;
@@ -71,10 +80,12 @@ function startX11Watch({
     if (stopped) return;
     stopped = true;
     log.error(`[capri] window watch: ${why}`);
+    native?.close();
     onState(false);
   };
 
   const props = async (id) => {
+    if (native) return native.window(id); // gone meanwhile: null
     try {
       return x11.parseWindow(await run('xprop', ['-id', `0x${id.toString(16)}`, ...x11.WINDOW_PROPS]));
     } catch {
@@ -83,13 +94,22 @@ function startX11Watch({
   };
 
   const poll = async () => {
-    const [rootOut, treeOut] = await Promise.all([
-      run('xprop', ['-root', ...x11.ROOT_PROPS]),
-      run('xwininfo', ['-root', '-tree']),
-    ]);
-    const root = x11.parseRoot(rootOut);
-    if (!root) throw Object.assign(new Error('no EWMH window manager (_NET_CLIENT_LIST_STACKING missing)'), { ewmh: false });
-    const rects = x11.parseTree(treeOut);
+    let root;
+    let rects;
+    if (native) {
+      root = native.root();
+      if (!root) throw Object.assign(new Error('no EWMH window manager (_NET_CLIENT_LIST_STACKING missing)'), { ewmh: false });
+      // geometry only for what the snapshot can use (the tools' tree had every window)
+      rects = native.rects([...root.stacking.slice(0, 80), root.active]);
+    } else {
+      const [rootOut, treeOut] = await Promise.all([
+        run('xprop', ['-root', ...x11.ROOT_PROPS]),
+        run('xwininfo', ['-root', '-tree']),
+      ]);
+      root = x11.parseRoot(rootOut);
+      if (!root) throw Object.assign(new Error('no EWMH window manager (_NET_CLIENT_LIST_STACKING missing)'), { ewmh: false });
+      rects = x11.parseTree(treeOut);
+    }
     // read again: new windows, moved or resized ones, and the one in front and the one that was when
     // that changed. Not on every poll: a state change of the front window is a change of its
     // geometry or of which one is in front, or the rolling re-read below finds it. Every window is
@@ -130,6 +150,7 @@ function startX11Watch({
     handle = null;
     if (stopped) return;
     try {
+      native?.begin(); // BadWindow of a window gone mid-read is swallowed until end()
       const snap = await poll();
       if (stopped) return;
       failures = 0;
@@ -150,6 +171,8 @@ function startX11Watch({
       if (stopped) return;
       if (err && err.code === 'ENOENT') return giveUp(`${err.path || 'xprop/xwininfo'} not found: install x11-utils (xprop, xwininfo)`);
       if (++failures >= GIVE_UP) return giveUp(err?.message || String(err));
+    } finally {
+      native?.end();
     }
     if (!stopped) handle = timer.set(tick, every());
   };
@@ -159,6 +182,7 @@ function startX11Watch({
     stop() {
       stopped = true;
       if (handle) timer.clear(handle);
+      native?.close();
     },
   };
 }
