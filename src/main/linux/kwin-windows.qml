@@ -933,7 +933,7 @@ Item {
     // outputs), and the way back after the receiver was away.
     Timer {
         id: netTimer
-        interval: 500
+        interval: 5000
         repeat: true
         running: true
         onTriggered: root.safetyNet()
@@ -946,7 +946,7 @@ Item {
     // brings the fast beat back at once (sendCursor).
     Timer {
         id: pollTimer
-        interval: 150
+        interval: 250
         repeat: true
         running: true
         onTriggered: {
