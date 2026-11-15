@@ -18,6 +18,7 @@ const text = fs.readFileSync(QML, 'utf8');
 const calls = [...text.matchAll(/DBusCall\s*\{([\s\S]*?)\n\s*\}/g)].map((m) => m[1]);
 const receiver = calls.filter((b) => b.includes('service: "org.capri.WindowBridge"'));
 const callId = (block) => (/\bid:\s*(\w+)/.exec(block) || [, '(unnamed)'])[1];
+const blockOf = (id) => calls.find((b) => new RegExp(`\\bid:\\s*${id}\\b`).test(b)) || '';
 // root.fn(), fn() and spaced calls are all the same wiring
 const failureFn = (block) => (/\bonFailed:\s*(?:root\.)?(\w+)\s*\(\s*\)/.exec(block) || [])[1] || null;
 // A string declared as a property of the Item: the script may name itself once and use that
@@ -25,9 +26,11 @@ const declaredString = (name) => {
     const re = new RegExp(`(?:readonly\\s+)?property\\s+(?:string|var)\\s+${name}\\s*:\\s*["']([^"']+)["']`);
     return (re.exec(text) || [])[1] || null;
 };
-// What unloadScript is given: a literal, or a property holding one
 const unloadedName = () => {
-  const arg = (/unloadCall\.arguments\s*=\s*\[\s*([^\]]+?)\s*\]/.exec(text) || [])[1];
+  const assigned = /unloadCall\.arguments\s*=\s*\[\s*([^\]]+?)\s*\]/.exec(text);
+  const arg = assigned
+    ? assigned[1]
+    : (/\barguments\s*:\s*\[\s*([^\]]+?)\s*\]/.exec(blockOf('unloadCall')) || [])[1];
   if (!arg) return null;
   const literal = /^["'](.+)["']$/.exec(arg.trim());
   if (literal) return literal[1];
@@ -45,12 +48,27 @@ test('kwin script: every call to the receiver reports a failure to one superviso
     assert.equal(names.length, 1, `all calls must report to one liveness supervisor, got:\n${wired.map((c) => `  ${c.id}: ${c.fn}`).join('\n')}`);
 });
 
+// A handler renamed or deleted while a call still names it: a TypeError inside KWin the moment
+// that signal fires, and nothing counted. (root.onFailed() after the supervisor was renamed.)
+test('kwin script: every function it calls is defined', () => {
+  const defined = new Set([
+    ...[...text.matchAll(/function\s+(\w+)\s*\(/g)].map((m) => m[1]),
+    ...[...text.matchAll(/property\s+var\s+(\w+)\s*:\s*function\b/g)].map((m) => m[1]),
+  ]);
+  const called = [...text.matchAll(/\broot\.(\w+)\s*\(/g)].map((m) => m[1]);
+  const missing = [...new Set(called.filter((n) => !defined.has(n)))];
+  assert.deepEqual(missing, [], `called but not defined in the script: ${missing.join(', ')}`);
+});
+
 test('kwin script: self-unload stops every timer and names this script', () => {
     const timers = [...text.matchAll(/id:\s*(\w+Timer)\b/g)].map((m) => m[1]);
     assert.ok(timers.length >= 5, `only ${timers.length} timers found`);
     const running = timers.filter((id) => !new RegExp(`\\b${id}\\.stop\\s*\\(`).test(text));
     assert.deepEqual(running, [], `these timers are never stopped, they would outlive the receiver: ${running.join(', ')}`);
-    assert.equal(unloadedName(), SCRIPT_NAME, 'unloadScript must be given the name the receiver loads the script under (a literal or a property holding it)');
+    assert.equal(unloadedName(), SCRIPT_NAME,
+        'unloadScript must be given the name the receiver loads the script under: either '
+        + 'unloadCall.arguments = ["…"] before the call, or arguments: ["…"] in the unloadCall block '
+        + '(a literal, or a property holding one). Without it the script never unloads.');
     assert.equal([...text.matchAll(/unloadCall\.call\s*\(/g)].length, 1, 'one place unloads the script');
 });
 
