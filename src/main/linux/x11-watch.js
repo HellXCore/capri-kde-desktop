@@ -13,7 +13,7 @@ const { execFile } = require('node:child_process');
 const x11 = require('./x11');
 
 const INTERVAL = 250;       // ms between polls
-const IDLE_INTERVAL = 500;  // ms between polls once IDLE_AFTER polls in a row found nothing new
+const IDLE_INTERVAL = 1500;  // ms between polls once IDLE_AFTER polls in a row found nothing new
 const IDLE_AFTER = 12;      // (3 s); the first change brings INTERVAL back
 const FULL_EVERY = 4000;    // ms: every window's properties read again (state changes without a move)
 const READ_AT_ONCE = 8;     // xprop processes running at the same time
