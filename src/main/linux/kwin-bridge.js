@@ -47,6 +47,11 @@ const list = (v) => (Array.isArray(v) ? v : []);
 const COMMANDS = new Set(['toggle']); // the keys the script may report
 const isRect = (r) => r && typeof r === 'object' && [r.x, r.y, r.w, r.h].every(isNum) && r.w > 0 && r.h > 0;
 const MAX_PIDS = 64;
+// Cursor sampling contract: zone is interactive rects padded by ZONE_PAD.
+// Outside zone, report every ZONE_STEP px. Invariant: ZONE_STEP <= ZONE_PAD - 6
+// (wayland-toggle's PADDING), guaranteeing a report inside zone before reaching an interactive rect.
+const ZONE_PAD = 48;
+const ZONE_STEP = 32;
 
 let active = null; // the running watcher: what apps-linux.js asks (current())
 
@@ -411,11 +416,12 @@ function startKWinWatch({
     setZones(rects) {
       const rs = (Array.isArray(rects) ? rects : []).filter((r) => r && r.width > 0 && r.height > 0);
       const next = rs.length ? {
-        x: Math.min(...rs.map((r) => r.x)) - 24, y: Math.min(...rs.map((r) => r.y)) - 24, w: 0, h: 0,
+        x: Math.min(...rs.map((r) => r.x)) - ZONE_PAD, y: Math.min(...rs.map((r) => r.y)) - ZONE_PAD, w: 0, h: 0,
       } : null;
       if (next) {
-        next.w = Math.max(...rs.map((r) => r.x + r.width)) + 24 - next.x;
-        next.h = Math.max(...rs.map((r) => r.y + r.height)) + 24 - next.y;
+        next.w = Math.max(...rs.map((r) => r.x + r.width)) + ZONE_PAD - next.x;
+        next.h = Math.max(...rs.map((r) => r.y + r.height)) + ZONE_PAD - next.y;
+        next.step = ZONE_STEP;
       }
       if (JSON.stringify(next) !== JSON.stringify(zones)) { zones = next; lastSelfKey = ''; }
     },

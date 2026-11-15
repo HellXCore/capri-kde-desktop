@@ -50,8 +50,10 @@ Item {
     property var watched: ({})  // window internalId -> signals connected
     property int nextId: 1
     property string lastJson: ""
-    property bool failing: false
-    property int failCount: 0
+    // receiver link: one owner of liveness, timers and self-unload
+    property bool linkDown: false
+    property int linkFails: 0
+    readonly property int linkFailLimit: 20
     property string cursorKey: ""
     property var tuned: ({})   // overlay windows already given their flags
     property bool focusWanted: false // her chat is open: the keyboard is hers
@@ -72,8 +74,13 @@ Item {
     property int cursorIdle: 0       // beats in a row the pointer did not move (sendCursor)
     property string flagsKey: ""      // what the receiver last said about debugging (applySelf)
     property var zone: null
-    property bool cursorHot: false
-    property real coldAt: 0
+    property real coldAt: 0      // last cold keep-alive report (ms)
+    property var lastSent: null  // last cursor point actually reported
+    // event-driven invalidation
+    property bool dirty: true
+    // one-time probe: undefined = not tried, false = this KWin has no per-screen desktops
+    property var perScreenDesktop: undefined
+
     readonly property string build: "@BUILD@" // the hash of this text, put in by the receiver (writeScript)
 
     // ---------- what to send ----------
@@ -142,11 +149,12 @@ Item {
     // so x11.isSeat() compares it right.
     function desktopOf(w, current) {
         if (w.onAllDesktops || !w.desktops || w.desktops.length === 0) return root.allDesktops;
+        if (root.perScreenDesktop === undefined) {
+            root.perScreenDesktop = typeof Workspace.currentDesktopForScreen === "function";
+        }
         let shown = null;
-        try {
-            shown = Workspace.currentDesktopForScreen(w.output);
-        } catch (e) {
-            shown = null;
+        if (root.perScreenDesktop) {
+            try { shown = Workspace.currentDesktopForScreen(w.output); } catch (e) { shown = null; }
         }
         if (!shown) shown = Workspace.currentDesktop;
         for (let i = 0; i < w.desktops.length; i++) {
@@ -355,7 +363,7 @@ Item {
             const signal = w.minimizedChanged;
             const f = () => root.trace("minimized=" + w.minimized + ": " + root.traceName(w));
             signal.connect(f);
-            root.hooked.push({ s: signal, f: f });
+            root.hooked.push({ w: w, s: signal, f: f });
         } catch (e) {
             // no such signal here
         }
@@ -436,7 +444,8 @@ Item {
             root.missing += 1;
             if (root.missing === 20) root.reportMissing(); // about three seconds
         }
-        root.ensureTop();
+        // raising is event-driven now: windowActivated() and flush() call ensureTop();
+        // stacking changes reach us via signals or the fingerprint net, not via this poll
     }
 
     // Once: she is not found. What KWin has that could be her, so that it can be seen what is different.
@@ -516,16 +525,6 @@ Item {
     function sendCursor() {
         const p = Workspace.cursorPos;
         const mine = root.selfRef();
-        if (mine && root.zone) {
-            const rx = p.x - mine.frameGeometry.x, ry = p.y - mine.frameGeometry.y;
-            const hot = rx >= root.zone.x && rx <= root.zone.x + root.zone.w && ry >= root.zone.y && ry <= root.zone.y + root.zone.h;
-            if (!hot && !root.cursorHot) {
-                const now = Date.now();
-                if (now - root.coldAt < 500) return;
-                root.coldAt = now;
-            }
-            root.cursorHot = hot;
-        }
         let key = Math.round(p.x) + "," + Math.round(p.y);
         if (mine) key += "," + Math.round(p.x - mine.frameGeometry.x) + "," + Math.round(p.y - mine.frameGeometry.y);
         if (key === root.cursorKey) {
@@ -533,10 +532,26 @@ Item {
             if (root.cursorIdle === 30 && cursorTimer.interval !== 100) cursorTimer.interval = 100;
             return;
         }
+        root.cursorKey = key;
         root.cursorIdle = 0;
         if (cursorTimer.interval !== 33) cursorTimer.interval = 33;
         if (pollTimer.interval !== 150) pollTimer.interval = 150; // she may be about to be used
-        root.cursorKey = key;
+        // Outside the zone, report after travelling zone.step px (or 500 ms keep-alive). Since step < margin
+        // to interactive rects, the pointer can't reach them unreported — preventing lost first clicks without time throttling.
+        let send = true;
+        if (mine && root.zone) {
+            const rx = p.x - mine.frameGeometry.x, ry = p.y - mine.frameGeometry.y;
+            const hot = rx >= root.zone.x && rx <= root.zone.x + root.zone.w && ry >= root.zone.y && ry <= root.zone.y + root.zone.h;
+            if (!hot) {
+                const last = root.lastSent;
+                const travel = last ? Math.hypot(p.x - last.x, p.y - last.y) : Infinity;
+                const now = Date.now();
+                send = travel >= (root.zone.step || 32) || now - root.coldAt >= 500;
+                if (send) root.coldAt = now;
+            }
+        }
+        if (!send) return;
+        root.lastSent = { x: p.x, y: p.y };
         cursorCall.arguments = [key];
         cursorCall.call();
     }
@@ -548,7 +563,7 @@ Item {
 
     // the receiver's answer to a poll: { self, commands: [{ op: "close", pids }, { op: "focus", on }] }
     function runCommands(text) {
-        root.failCount = 0;
+        root.linkAlive();
         let answer = {};
         try {
             answer = JSON.parse(text);
@@ -615,9 +630,10 @@ Item {
 
     function safetyNet() {
         if (root.movingWin) return;
-        root.netTick = (root.netTick + 1) % 4;
+        // reconciliation every 30 s: signals + the fingerprint cover everything else
+        root.netTick = (root.netTick + 1) % 60;
         const key = root.fingerprint();
-        if (root.netTick !== 0 && key === root.netKey) return;
+        if (!root.dirty && root.netTick !== 0 && key === root.netKey) return;
         root.netKey = key;
         root.flush();
     }
@@ -625,6 +641,7 @@ Item {
     function flush() {
         // while a window is dragged only Move talks (id,x,y,w,h); moveFinished sends the full one
         if (root.movingWin) return;
+        root.dirty = false;
         root.ensureTop();
         const json = JSON.stringify(root.collect());
         if (json === root.lastJson) return; // nothing changed: nothing sent
@@ -639,6 +656,7 @@ Item {
     // nothing once the timer is gone, and everything connected is taken back when the script ends.
     function schedule() {
         if (!flushTimer) return;
+        root.dirty = true; // every caller of schedule wants a re-collect
         if (!flushTimer.running) flushTimer.start();
     }
 
@@ -659,7 +677,7 @@ Item {
             try {
                 const signal = w[signals[i]];
                 signal.connect(root.poke);
-                root.hooked.push({ s: signal, f: root.poke });
+                root.hooked.push({ w: w, s: signal, f: root.poke });
             } catch (e) {
                 // this KWin has no such signal: the poll below still catches the change
             }
@@ -671,10 +689,17 @@ Item {
         const key = String(w.internalId);
         delete root.watched[key];
         delete root.ids[key];
+        delete root.tuned[key];
         if (root.movingWin === w) {
             root.movingWin = null;
             root.moveGeo = null;
         }
+        // drop this window's hooks now, not only at script end (long sessions no longer accumulate them)
+        root.hooked = root.hooked.filter((h) => {
+            if (h.w !== w) return true;
+            try { h.s.disconnect(h.f); } catch (e) { /* gone already */ }
+            return false;
+        });
     }
 
     // ---------- the light channel: a window being dragged or resized ----------
@@ -692,7 +717,7 @@ Item {
             try {
                 const signal = w[pairs[i][0]];
                 signal.connect(pairs[i][1]);
-                root.hooked.push({ s: signal, f: pairs[i][1] });
+                root.hooked.push({ w: w, s: signal, f: pairs[i][1] });
             } catch (e) {
                 // no such signal here
             }
@@ -709,7 +734,7 @@ Item {
                 if (w === Workspace.activeWindow || !root.selfWin || root.isSelf(w)) root.poke();
             };
             signal.connect(f);
-            root.hooked.push({ s: signal, f: f });
+            root.hooked.push({ w: w, s: signal, f: f });
         } catch (e) {
             // no such signal here: the 500 ms net below catches the change
         }
@@ -754,8 +779,7 @@ Item {
 
     // the receiver's reply: who it is, so its own overlay is left out of the list
     function onReply(returned) {
-        root.failing = false;
-        root.failCount = 0;
+        root.linkAlive();
         try {
             root.applySelf(JSON.parse(returned[0]));
         } catch (e) {
@@ -779,21 +803,32 @@ Item {
         if (changed) {
             root.lastJson = ""; // send again, now without the overlay
             root.netKey = "";
+            root.dirty = true;
         }
     }
 
-    function onFailed() {
-        // the receiver is gone (Capri closed): sent again when it is back
+    // the link supervisor (every call reports here, one place owns the timers)
+    function linkAlive() {
+        root.linkFails = 0;
+        root.linkDown = false;
+    }
+
+    function linkLost() {
         root.lastJson = "";
         root.netKey = "";
-        if (!root.failing) console.warn("capri-windows: no receiver on org.capri.WindowBridge");
-        root.failing = true;
-        // self unload when Capri exit or crash
-        if (++root.failCount >= 20) {
-            pollTimer.stop(); cursorTimer.stop(); netTimer.stop();
-            unloadCall.arguments = ["capri-windows"];
-            unloadCall.call();
-        }
+        if (!root.linkDown) console.warn("capri-windows: no receiver on org.capri.WindowBridge");
+        root.linkDown = true;
+        // pollTimer fires even when the pointer is still and nothing else does, so a dead
+        // receiver is noticed within interval linkFailLimit and the script unloads itself
+        if (++root.linkFails >= root.linkFailLimit) root.shutdown();
+    }
+
+    function shutdown() {
+        pollTimer.stop(); cursorTimer.stop(); netTimer.stop();
+        flushTimer.stop(); moveTimer.stop(); moveIdleTimer.stop(); giveBackTimer.stop();
+        nloadCall.arguments = ["capri-windows"];
+        unloadCall.call();
+
     }
 
     DBusCall {
@@ -803,7 +838,7 @@ Item {
         dbusInterface: "org.capri.WindowBridge"
         method: "Update"
         onFinished: (returned) => root.onReply(returned)
-        onFailed: root.onFailed()
+        onFailed: root.linkLost()
     }
 
     DBusCall {
@@ -812,7 +847,8 @@ Item {
         path: "/org/capri/WindowBridge"
         dbusInterface: "org.capri.WindowBridge"
         method: "Cursor"
-        onFailed: root.onFailed()
+        onFinished: root.linkAlive()
+        onFailed: root.linkLost()
     }
 
     DBusCall {
@@ -831,6 +867,7 @@ Item {
         dbusInterface: "org.capri.WindowBridge"
         method: "Poll"
         onFinished: (returned) => root.runCommands(returned[0])
+        onFailed: root.linkLost()
     }
 
     ShortcutHandler {
@@ -846,7 +883,8 @@ Item {
         path: "/org/capri/WindowBridge"
         dbusInterface: "org.capri.WindowBridge"
         method: "Move"
-        onFailed: root.onFailed()
+        onFinished: root.linkAlive()
+        onFailed: root.linkLost()
     }
 
     DBusCall {
