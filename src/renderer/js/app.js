@@ -712,12 +712,12 @@ async function boot() {
     awayChecks = 0;
     goToScreen(at.display);
   };
-  window.addEventListener('resize', () => {
-    fx.resize(innerWidth, innerHeight);
-    chip.place(innerWidth, innerHeight - floorGap);
-    capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
-    scheduleUpdateShapes();
-  });
+  //window.addEventListener('resize', () => {
+  //  fx.resize(innerWidth, innerHeight);
+  //  chip.place(innerWidth, innerHeight - floorGap);
+  //  capri.setView(innerWidth, innerHeight, innerHeight - floorGap);
+  //  scheduleUpdateShapes();
+  //});
 
   host.onConfig((cfg) => {
     voice.configure(cfg);
