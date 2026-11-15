@@ -178,7 +178,6 @@ async function boot() {
   const setInteractive = (on) => {
     if (on === interactive) return;
     interactive = on;
-    host.setInteractive(on);
   };
   const onChip = () => Boolean(chip.visible && mouse && chip.contains(mouse.x, mouse.y, 0));
   const refreshHit = () => {
@@ -632,11 +631,13 @@ async function boot() {
       mask.pause();
       fx.pause();
       panel.pause();
+      voice.ctx?.suspend?.(); // nobody is listening
       clearTimeout(wakeTimer);
       wakeTimer = 0;
     },
     resume: (gap) => {
       delete document.documentElement.dataset.paused;
+      voice.ctx?.resume?.();
       capri.shiftClock(gap);
       capri.paused = false;
       chip.unpause();
