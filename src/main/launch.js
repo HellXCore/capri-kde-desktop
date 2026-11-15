@@ -13,7 +13,12 @@ const { app, shell } = require('electron');
 const SKIP = /uninstall|désinstaller|desinstalar|deinstall|readme|documentation|release notes|support center|website|manual/i;
 const STEAM_SKIP = /redistributable|dedicated server|steamworks/i;
 // words that don't tell apps apart ("Roblox Player" is "roblox", "AM Music" is "am")
-const FILLER = new Set(['player', 'launcher', 'app', 'the', 'for', 'windows', 'desktop', 'client', 'x64', 'x86', 'beta', 'music', 'musique', 'media', 'audio', 'video', 'videos']);
+const FILLER = new Set([
+  'player', 'launcher', 'app', 'the', 'for', 'windows', 'desktop', 'client', 
+  'x64', 'x86', 'beta', 'music', 'musique', 'media', 'audio', 'video', 'videos',
+  // Linux additions:
+  'flatpak', 'snap', 'appimage', 'wayland', 'x11', 'bin', 'usr', 'local'
+]);
 const CACHE_MS = 10 * 60 * 1000; // installed apps hardly change
 
 let cache = null; // { at, items }
