@@ -798,7 +798,7 @@ Item {
             + " noRaise=" + Boolean(next.noRaise) + " tuneOff=[" + (next.tuneOff || []).join(",") + "]";
         if (flags !== root.flagsKey) {
             root.flagsKey = flags;
-            console.warn("capri-windows: script of patch 13, told: " + flags);
+            console.warn("capri-windows: build " + root.build + ", told: " + flags);
         }
         if (changed) {
             root.lastJson = ""; // send again, now without the overlay

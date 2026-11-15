@@ -169,17 +169,25 @@ function applyMove(snap, mv, outputs, units) {
 function writeScript(scriptDir, source = path.join(__dirname, 'kwin-windows.qml')) {
   const text = fs.readFileSync(source, 'utf8');
   const build = crypto.createHash('sha1').update(text).digest('hex').slice(0, 8);
-  fs.mkdirSync(scriptDir, { recursive: true });
-  const name = `${SCRIPT_NAME}-${build}.qml`;
-  const file = path.join(scriptDir, name);
+  // One directory per build, a fixed file name inside it. Two caches are keyed differently, and a
+  // flat directory of hash-named files only defeats the first one:
+  //   - compiled QML is keyed by path: a new text needs a new path (hence the build id);
+  //   - the engine also caches the directory it loaded from, and a file created in it afterwards
+  //     fails its exact-name check ("File name case mismatch") until KWin restarts.
+  // A directory this KWin has never seen has neither cache, so every build loads first time.
+  const dir = path.join(scriptDir, build);
+  const file = path.join(dir, `${SCRIPT_NAME}.qml`);
+  fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, text.replace('"@BUILD@"', JSON.stringify(build)));
-  for (const f of fs.readdirSync(scriptDir)) {
-    if (f !== name && new RegExp(`^${SCRIPT_NAME}(-[0-9a-f]{8})?\\.qml$`).test(f)) {
-      try {
-        fs.unlinkSync(path.join(scriptDir, f));
-      } catch {
-        // not ours to worry about
-      }
+  // Older builds go, and the legacy flat files with them. The caller has unloaded the running
+  // script by now, so none of these is held by KWin any more.
+  const legacy = new RegExp(`^${SCRIPT_NAME}(-[0-9a-f]{8})?\\.qml$`);
+  for (const entry of fs.readdirSync(scriptDir)) {
+    if (entry === build || !(/^[0-9a-f]{8}$/.test(entry) || legacy.test(entry))) continue;
+    try {
+      fs.rmSync(path.join(scriptDir, entry), { recursive: true, force: true });
+    } catch {
+      // not ours to worry about
     }
   }
   return { file, build };
@@ -392,21 +400,23 @@ function startKWinWatch({
     const owned = await bus.requestName(BUS_NAME, 4); // 4: DO_NOT_QUEUE
     if (owned !== 1) throw new Error(`${BUS_NAME} is taken (another Capri running?)`);
 
-    // the script, written out where KWin can read it, and started
+    // Unload first, write second, load third: writeScript clears older builds, and nothing it
+    // removes may still be loaded. A leftover from a crashed Capri is unloaded here too.
+    const [loaded] = await bus.call({ ...KWIN, member: 'isScriptLoaded', args: [['s', SCRIPT_NAME]] });
+    if (loaded) await bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] });
     const { file, build } = writeScript(scriptDir);
     const flags = ['CAPRI_TRACE_KWIN', 'CAPRI_KWIN_NO_GIVEBACK', 'CAPRI_KWIN_NO_RAISE', 'CAPRI_KWIN_TUNE_OFF']
-      .filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
-    log.log(`[capri] kwin watch: script build ${build} (${path.basename(file)})${flags.length ? `, debug: ${flags.join(' ')}` : ''}`);
-
-    const [loaded] = await bus.call({ ...KWIN, member: 'isScriptLoaded', args: [['s', SCRIPT_NAME]] });
-    if (loaded) await bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] }); // a leftover
+    .filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
+    log.log(`[capri] kwin watch: script build ${build} (${file})${flags.length ? `, debug: ${flags.join(' ')}` : ''}`);
     const [id] = await bus.call({ ...KWIN, member: 'loadDeclarativeScript', args: [['s', file], ['s', SCRIPT_NAME]] });
     if (id < 0) throw new Error('KWin did not load the script');
     await bus.call({ destination: 'org.kde.KWin', path: `/Scripting/Script${id}`, iface: 'org.kde.kwin.Script', member: 'run' });
 
     if (stopped) return;
     firstTimer = setTimeout(() => {
-      if (!running) fail('the KWin script sent nothing (see: journalctl --user -b | grep -i capri-windows)');
+      if (running) return;
+      fail('the KWin script sent nothing. If the journal says "Component failed to load", the QML ' 
+        + `never started: ${file} (journalctl --user -b | grep -i capri-windows)`);
     }, FIRST_UPDATE_MS);
   };
 
