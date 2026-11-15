@@ -189,8 +189,12 @@ function overlayArea() {
 // window frame that occupies the entire screen. `fitOverlay` function is executed whenever a display event occurs,
 // or when there is a change in power state or settings. If the result is "false," no further action is required.
 function setOverlayBounds(area) {
-  const b = overlay.getBounds();
-  if (b.x === area.x && b.y === area.y && b.width === area.width && b.height === area.height) return false;
+  if (lastRequestedBounds &&
+      lastRequestedBounds.x === area.x && lastRequestedBounds.y === area.y &&
+      lastRequestedBounds.width === area.width && lastRequestedBounds.height === area.height) {
+    return false;
+  }
+  lastRequestedBounds = { x: area.x, y: area.y, width: area.width, height: area.height };
   overlay.setBounds(area);
   return true;
 }
