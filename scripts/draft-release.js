@@ -85,7 +85,7 @@ chmod +x Capri-${version}-linux-x86_64.AppImage
 >  *Note for Ubuntu 22.04+:* If the application fails to start, you need to install the FUSE library:  
 > \`sudo apt install libfuse2\`
 >  *Note for users of a Wayland session outside of KDE Plasma:* you should use:  
-> \`./Capri-0.4.0-linux-x86_64.AppImage --ozone-platform=x11\`
+> \`./Capri-${version}-linux-x86_64.AppImage --ozone-platform=x11\`
 
 #### .deb package (Ubuntu / Debian / Linux Mint)
 1. Download the \`.deb\` package.
