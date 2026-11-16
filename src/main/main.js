@@ -188,6 +188,9 @@ function overlayArea() {
 // XWayland: this takes the form of a configuration change request, to which KWin responds by creating a new
 // window frame that occupies the entire screen. `fitOverlay` function is executed whenever a display event occurs,
 // or when there is a change in power state or settings. If the result is "false," no further action is required.
+
+let lastRequestedBounds = null;
+
 function setOverlayBounds(area) {
   if (lastRequestedBounds &&
       lastRequestedBounds.x === area.x && lastRequestedBounds.y === area.y &&
