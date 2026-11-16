@@ -2,6 +2,9 @@ node_modules/
 dist/
 out/
 *.log
+repomix.config.json
+.repomixignore
+capricorn-repomix-output.md
 .DS_Store
 Thumbs.db
 
