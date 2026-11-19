@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem, dialog, powerMonitor, desktopCapturer, nativeTheme,
+  clipboard, ClipboardItem, dialog, powerMonitor, nativeTheme,
 } = require('electron');
 const { randomUUID } = require('node:crypto');
 
@@ -15,7 +15,7 @@ const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
 const OVERLAY_TITLE = 'capri-overlay';
 const { createBridge } = require('./bridge');
-const { startWindowWatch } = require('./windows');
+const { startAdapters } = require('./adapters');
 const { watchPower } = require('./power');
 const { createInputRegion } = require('./linux/input-region');
 const { createInputRegion: createXShape } = require('./linux/x11-input');
@@ -30,7 +30,7 @@ const setup = require('./setup');
 const apps = require('./apps');
 const launch = require('./launch');
 const files = require('./files');
-const linuxShot = process.platform === 'linux' ? require('./linux/screenshot') : null; // Spectacle from KWin
+const linuxShot = require('./linux/screenshot');
 const { ASSISTANTS, assistant } = require('./assistants');
 const activeAssistant = () => assistant(config.load().assistant); // Claude Code or Codex
 const activeHooks = () => activeAssistant().hooks;
@@ -39,13 +39,24 @@ const demoSteps = require('../../scripts/demo-sequence');
 // What works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
 const ozone = ozonePlatform(app); // the --ozone-platform flag Electron was started with, if any
 const caps = createCapabilities({ ozone }); // the session follows what Electron runs on
-// Debug log
-console.log(`[capri] display session: ${caps.session} (Electron ${process.versions.electron}, --ozone-platform=${ozone || 'not given'}, `
+// Startup facts and the intersection's name, for the log only
+console.log(`[capri] display: ${caps.signature} (server=${caps.facts.server}, desktop=${caps.facts.desktop}, Electron ${process.versions.electron}, --ozone-platform=${ozone || 'not given'}, `
   + `XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || '-'}, WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY || '-'}, DISPLAY=${process.env.DISPLAY || '-'})`);
-// KDE on Wayland: Capri overlay must be a window KWin manages. "focusable: false" on Linux makes the
-// window stop interacting with the window manager, and KWin gives no keyboard input to such a window.
-// KWin managed window gets the keyboard while Capri chat is open (overlay:focus, the KWin script).
-const LINUX_MANAGED = process.platform === 'linux' && caps.session !== 'x11' && /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || '');
+
+// KDE on Wayland: Capri's overlay must be a window KWin manages. "focusable: false" on Linux makes
+// the window stop interacting with the window manager, and KWin gives no keyboard input to such a
+// window. A managed window gets the keyboard while Capri's chat is open (overlay:focus, the script).
+// Whether KWin may run is the adapter declaration's answer: with no display server there is no
+// compositor to manage anything, whatever the desktop name says.
+const KWIN_MANAGED = caps.adapters().includes('kwin');
+
+// Native Wayland: where the window is and whether it is on top are the compositor's to decide;
+// Electron's setBounds and moveTop only ask for it there.
+const NATIVE_WAYLAND = caps.facts.server === 'wayland';
+
+// Ctrl+Alt+C: where the ceiling hands it to an adapter, the KWin script registers it as a real
+// global shortcut; Electron owns it everywhere else, and takes it back if the adapter gives up.
+const ADAPTER_SHORTCUT = caps.mechanisms().shortcut === 'adapter';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
@@ -216,7 +227,7 @@ function overlayBounds() {
   return windowWatch?.origin?.() || overlay.getBounds();
 }
 async function waitForOverlay(area, timeoutMs = 1500) {
-  if (caps.session !== 'wayland') {
+  if (!NATIVE_WAYLAND) {
     await new Promise((r) => setTimeout(r, 60));
     setOverlayBounds(area);
     return overlay.getBounds();
@@ -239,9 +250,9 @@ function rearmOverlay() {
     overlay.setIgnoreMouseEvents(false);
     overlay.setIgnoreMouseEvents(true, { forward: true });
   }
-  if (caps.session !== 'wayland') {
+  if (!NATIVE_WAYLAND) {
     overlay.setAlwaysOnTop(true, 'screen-saver');
-    if (LINUX_MANAGED && !chatFocus) overlay.setFocusable(false);
+    if (KWIN_MANAGED && !chatFocus) overlay.setFocusable(false);
   }
   fitOverlay();
   sendCommand('rearmed');
@@ -250,7 +261,7 @@ function rearmOverlay() {
 // Back on top of everything, the taskbar included (it comes up over her when it's clicked). Twice:
 // the taskbar can come up again a moment later, as its menus and previews open.
 function raiseOverlay() {
-  if (caps.session === 'wayland') return;
+  if (NATIVE_WAYLAND) return;
   for (const wait of [0, 400]) {
     setTimeout(() => {
       if (!overlay || overlay.isDestroyed()) return;
@@ -272,8 +283,8 @@ function createOverlay() {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    focusable: LINUX_MANAGED, // (set to false again below there, and only true while Capri chat is open)
-    ...(LINUX_MANAGED ? { title: OVERLAY_TITLE } : {}),
+    focusable: KWIN_MANAGED, // (set to false again below there, and only true while Capri chat is open)
+    ...(KWIN_MANAGED ? { title: OVERLAY_TITLE } : {}),
     hasShadow: false,
     alwaysOnTop: true,
     type: undefined,
@@ -292,20 +303,20 @@ function createOverlay() {
   overlay.setAlwaysOnTop(true, 'screen-saver');
   // Not focusable from the start. A click on must not make KWin activate the overlay 
   // (listening the keyboard input is only while Capri's chat is open, overlay:focus)
-  if (LINUX_MANAGED) overlay.setFocusable(false);
+  if (KWIN_MANAGED) overlay.setFocusable(false);
 
-  // Linux: the window is drawn in full and takes the mouse only where she is. How that is said depends
-  // on the session: X11 and XWayland an exact input shape, native Wayland the window following the
-  // pointer (which the KWin script reports); empty before the first render, so the window does not
-  // intercept clicks across the screen (linux/input-region.js).
+  // Linux: the window is drawn in full and takes the mouse only where she is. The mechanism is the
+  // ceiling's for this intersection; what can reach her window is decided by the display server it
+  // really is on. Empty before the first render, so the window does not intercept clicks across the
+  // screen (linux/input-region.js).
   inputRegion = createInputRegion({
     overlay,
-    session: caps.session,
-    pointerAvailable: /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || ''),
+    mechanism: caps.mechanisms().input,
+    server: caps.session, // the real one: a forced policy does not change what her window is
     nativeTheme,
     xshape: createXShape,
   });
-  console.log(`[capri] input region: ${inputRegion.kind} (${caps.session}, Electron ${process.versions.electron})`);
+  console.log(`[capri] input region: ${inputRegion.kind} (ceiling ${caps.mechanisms().input}, server ${caps.session}, Electron ${process.versions.electron})`);
 
   overlay.loadURL('capri://app/src/renderer/index.html');
   // Always shown: put away, she's still there as her biochip in the corner. Sized again first:
@@ -314,7 +325,7 @@ function createOverlay() {
     fitOverlay();
     overlay.showInactive();
     inputRegion?.reapply(); // once mapped
-    if (LINUX_MANAGED) overlay.setFocusable(false); // again, now that it is mapped
+    if (KWIN_MANAGED) overlay.setFocusable(false); // again, now that it is mapped
   });
   overlay.webContents.on('render-process-gone', (_e, details) => {
     console.error('[capri] renderer gone:', details.reason);
@@ -544,6 +555,15 @@ function resetSettings() {
   return { ok: true, status: 'resetDone' };
 }
 
+// What the overlay, her tray menu and the settings window are told when something changed. Nothing is
+// written here: what she can do changes while she runs, and that is not a setting to keep on disk.
+function broadcastConfig() {
+  const cfg = rendererConfig();
+  overlay?.webContents.send('capri:config', cfg);
+  rebuildTray(); // the settings window is redrawn from it too
+  return cfg;
+}
+
 // `strict` (her settings window): saved to disk or not at all, and the error thrown to say so,
 // before anything else hears of the change
 function updateConfig(patch, { strict = false } = {}) {
@@ -553,10 +573,7 @@ function updateConfig(patch, { strict = false } = {}) {
     fitOverlay(); // the taskbar in her window or not
     windowWatch?.refresh();
   }
-  const cfg = rendererConfig();
-  overlay?.webContents.send('capri:config', cfg);
-  rebuildTray();
-  return cfg;
+  return broadcastConfig();
 }
 
 function rebuildTray() {
@@ -880,24 +897,23 @@ async function chatWithFallback(cfg, messages, send, signal, streamed) {
   }
 }
 
+// The screenshot stack: what the running adapter offers, then what this display server can do on
+// its own. The server is the real one — a capture method has to reach the screen as it actually is.
+const shotMethods = () => [
+  ...(windowWatch?.methods().screenshot || []),
+  ...(linuxShot?.BASE_METHODS[caps.session || 'none'] || []),
+];
+
 // She looks at your screen (look.js): a picture of the screen she's on, kept here in memory a moment
 // for her AI to look at, never written anywhere. 1280 px wide at most: enough to read, light to send.
 const snaps = new Map(); // id -> the picture, base64 JPEG
 async function snapScreen() {
-  // Linux: under XWayland desktopCapturer sees only the X windows; Spectacle asks KWin for all of it
-  const shot = linuxShot && await linuxShot.grab({ multi: displays().length > 1 });
-  if (shot) {
-    const { width } = shot.getSize();
-    return (width > 1280 ? shot.resize({ width: 1280 }) : shot).toJPEG(72).toString('base64');
-  }
-  const d = targetDisplay();
-  const k = d.scaleFactor || 1;
-  const fit = Math.min(1, 1280 / (d.bounds.width * k));
-  const size = { width: Math.round(d.bounds.width * k * fit), height: Math.round(d.bounds.height * k * fit) };
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
-  const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
-  if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
-  return src.thumbnail.toJPEG(72).toString('base64');
+  const shot = linuxShot && await linuxShot.grab({
+    methods: shotMethods(), multi: displays().length > 1, display: targetDisplay(),
+  });
+  if (!shot) throw new Error('no picture of the screen');
+  const { width } = shot.getSize();
+  return (width > 1280 ? shot.resize({ width: 1280 }) : shot).toJPEG(72).toString('base64');
 }
 
 // What her AI says about that picture, as her (`persona`), asked `prompt`. With a code when it can't:
@@ -1160,10 +1176,11 @@ function registerIpc() {
   ipcMain.handle('setup:launch', (_e, integration) => (caps.has('ollamaLaunch') ? setup.launchThroughOllama(integration) : { ok: false, unsupported: true }));
   // closing an app you asked her to close, once you've clicked to confirm (apps.js)
   const appInfo = (app) => app && { name: app.process, label: app.label };
-  ipcMain.handle('apps:list', async () => (caps.has('appList') ? (await apps.list().catch(() => [])).map(appInfo) : []));
-  ipcMain.handle('apps:find', async (_e, wanted) => (caps.has('appList') ? appInfo(await apps.find(wanted).catch(() => null)) : null));
+  const appWatch = () => windowWatch?.apps() || null; // the adapter's windows, while it is running
+  ipcMain.handle('apps:list', async () => (caps.has('appList') ? (await apps.list({ watch: appWatch() }).catch(() => [])).map(appInfo) : []));
+  ipcMain.handle('apps:find', async (_e, wanted) => (caps.has('appList') ? appInfo(await apps.find(wanted, { watch: appWatch() }).catch(() => null)) : null));
   ipcMain.handle('apps:close', (_e, { name, force }) => (caps.has('appClose')
-    ? apps.close(name, { force }).catch((err) => ({ error: err.message }))
+    ? apps.close(name, { force, watch: appWatch() }).catch((err) => ({ error: err.message }))
     : { unsupported: true }));
   // opening things you ask her to (launch.js): an app or a game, your music, a website
   ipcMain.handle('apps:findLaunch', async (_e, text) => {
@@ -1175,7 +1192,7 @@ function registerIpc() {
   // your files (files.js): a search, opening what it found, a screenshot, a search on the web
   ipcMain.handle('files:search', (_e, query) => files.search(query).catch(() => []));
   ipcMain.handle('files:open', (_e, { file, reveal }) => files.open(String(file), { reveal: Boolean(reveal) }).then(() => true, () => false));
-  ipcMain.handle('files:screenshot', () => files.screenshot(targetDisplay()).catch(() => null));
+  ipcMain.handle('files:screenshot', () => files.screenshot(targetDisplay(), { methods: shotMethods() }).catch(() => null));
   ipcMain.handle('web:search', (_e, query) => {
     const q = String(query || '').trim().slice(0, 300);
     if (!q) return false;
@@ -1496,33 +1513,32 @@ function main() {
     createOverlay();
     createTray();
     // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
-    caps.onChange(() => updateConfig({}));
-    windowWatch = startWindowWatch({
+    caps.onChange(broadcastConfig);
+    windowWatch = startAdapters({
+      caps,
       overlay,
-      session: caps.session, // Linux: X11, XWayland through the kwin qml script
+      session: caps.session, // the watcher's own guard reads it; the choice is the mode's
       onState: (ok) => {
-        caps.set('windowTracking', ok);
-        // KDE Wayland: the same KWin script lists and closes the apps, and owns global
-        // shortcut(Ctrl+Alt+C). XWayland only reaches shortcut while an X window has focus
-        if (windowWatch?.source === 'kwin') {
-          caps.set('appList', ok);
-          caps.set('appClose', ok);
-          // native Wayland: her window takes the mouse only while the pointer is said to be over her; if it
-          // never is, nothing reaches her, and the log says why that may be
-          if (ok && inputRegion?.kind === 'toggle') {
-            setTimeout(() => {
-              const s = inputRegion?.stats?.();
-              if (s && s.pointers === 0) {
-                console.warn('[capri] input region: the pointer was never reported in her window\'s coordinates, so she takes no clicks. '
-                  + 'The KWin script may not find her window: see `journalctl --user -b | grep -i capri-windows`');
-              }
-            }, 8000);
-          }
-          // (not registered with Electron at all while the script runs: see below)
+        // What the adapter provides is already in caps (adapters.js). What is left here is the
+        // pointer channel and the shortcut handover.
+        // Native Wayland: her window takes the mouse only while the pointer is said to be over her;
+        // if it never is, nothing reaches her, and the log says why that may be.
+        if (ok && KWIN_MANAGED && inputRegion?.kind === 'toggle') {
+          setTimeout(() => {
+            const s = inputRegion?.stats?.();
+            if (s && s.pointers === 0) {
+              console.warn('[capri] input region: the pointer was never reported in her window\'s coordinates, so she takes no clicks. '
+                + 'The KWin script may not find her window: see `journalctl --user -b | grep -i capri-windows`');
+            }
+          }, 8000);
+        }
+        // The script owns Ctrl+Alt+C while it runs (Electron never registers it first then: see
+        // below); when the script gives up, Electron's own takes over.
+        if (ADAPTER_SHORTCUT) {
           if (ok) {
             if (globalShortcut.isRegistered('Control+Alt+C')) globalShortcut.unregister('Control+Alt+C');
           } else if (!globalShortcut.isRegistered('Control+Alt+C')) {
-            globalShortcut.register('Control+Alt+C', () => toggleVisible()); // the script is gone: Electron's own
+            globalShortcut.register('Control+Alt+C', () => toggleVisible());
           }
         }
       },
@@ -1541,10 +1557,10 @@ function main() {
       onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
       onDebug: DEV ? debugHandler : null,
     });
-    // KDE Wayland: the KWin script owns Ctrl+Alt+C. Not registered here first and taken back later: on
-    // native Wayland Electron asks the desktop portal for it, that session is made after the fact, and
-    // closing it at once is an error from the portal (and a script that never starts gives it back, above)
-    if (!LINUX_MANAGED) globalShortcut.register('Control+Alt+C', () => toggleVisible());
+    // Where an adapter owns Ctrl+Alt+C, Electron does not register it first and take it back later:
+    // on native Wayland Electron asks the desktop portal for it, that session is made after the fact,
+    // and closing it at once is an error from the portal (a script that never starts gives it back, above)
+    if (!ADAPTER_SHORTCUT) globalShortcut.register('Control+Alt+C', () => toggleVisible());
     llm.restoreClaude(readMemory().claude);
     if (!SMOKE) refreshModels(); // for her menu's model list
     if (!SMOKE) setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask

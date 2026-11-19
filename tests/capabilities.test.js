@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const { FEATURES, detect, linuxSession, createCapabilities } = require('../src/main/capabilities');
 
 const make = (platform = 'linux', extra = {}) => createCapabilities({ platform, env: {}, ...extra });
-const KDE_WAYLAND = { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' };
+const KDE_WAYLAND = { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_CURRENT_DESKTOP: 'KDE' };
 
 test('Linux: base features are on, dynamic features wait for adapter', () => {
   const caps = make('linux', { env: { DISPLAY: ':0' } });
@@ -47,7 +47,7 @@ test('Linux: the window watcher (X11 or KWin) turns window tracking on and off',
   assert.equal(caps.has('windowTracking'), true);
   assert.equal(caps.forRenderer().windows, true);
   assert.equal(caps.forRenderer().possess, true);
-  // Adapter features like "closeApps" are disabled when isn't KDE environment
+  // Listing and closing apps come from the same watcher, and it has not reported them yet
   assert.equal(caps.forRenderer().closeApps, false);
 
   caps.set('windowTracking', false);

@@ -1,10 +1,10 @@
 'use strict';
 
-// The open apps and closing one, on Linux (apps.js). The windows KWin reports (kwin-bridge.js), one
-// app per program, by its desktop file or window class. Closing asks KWin to close its windows the
-// way the close button does (the app can still ask you to save); forcing it ends its processes.
+// The open apps and closing one, on Linux (apps.js). The windows come from the adapter that
+// reports them, handed in as `watch`: { windows(), closeApps(pids) }. One app per program, by its
+// desktop file or window class. Closing asks for its windows the way the close button does (the
+// app can still ask you to save); forcing it ends its processes.
 
-const kwin = require('./kwin-bridge');
 const entries = require('./desktop-entries');
 
 // never these: the desktop itself, KDE's own pieces, her (Capri), Claude (she watches it) and
@@ -29,7 +29,7 @@ const alive = (pid) => {
 
 // [{ name, process, label, ids }]: one per program with a window open. `name` is what close() is
 // given back: its desktop file ("org.mozilla.firefox"), else its window class.
-async function list({ watch = kwin.current(), desktop = entries } = {}) {
+async function list({ watch = null, desktop = entries } = {}) {
   if (!watch) return [];
   const apps = new Map();
   for (const w of watch.windows()) {
@@ -50,7 +50,7 @@ async function list({ watch = kwin.current(), desktop = entries } = {}) {
 
 // Closes it like its close button would; `force` ends its processes outright (unsaved work is
 // lost). Resolves with what is left: { running } (true when it stayed open, or hid in the tray).
-async function close(name, { force = false, watch = kwin.current(), wait = sleep } = {}) {
+async function close(name, { force = false, watch = null, wait = sleep } = {}) {
   const app = (await list({ watch })).find((a) => a.process === name);
   if (!app) return { running: false };
   const pids = app.ids.filter((pid) => pid > 1 && pid !== process.pid);

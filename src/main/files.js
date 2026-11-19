@@ -6,7 +6,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, shell, desktopCapturer, screen } = require('electron');
+const { app, shell, screen } = require('electron');
 
 const LIMIT = 8;
 const found = new Set(); // what a search showed you: the only paths she opens from here
@@ -85,20 +85,14 @@ async function open(file, { reveal = false } = {}) {
   if (err) throw new Error(err);
 }
 
-// A screenshot of the screen she's on, full size, saved in Pictures › Screenshots (made if needed).
-async function screenshot(display) {
+// `methods`: the stack the wiring put together (the adapter's own first, then this server's).
+async function screenshot(display, { methods = [] } = {}) {
   const d = display || screen.getPrimaryDisplay();
-  // Spectacle takes it from KWin (desktopCapturer, under XWayland, sees only the X windows)
-  const shot = await require('./linux/screenshot').grab({ multi: screen.getAllDisplays().length > 1 });
-  let png = shot && shot.toPNG();
-  if (!png) {
-    const k = d.scaleFactor || 1;
-    const size = { width: Math.round(d.bounds.width * k), height: Math.round(d.bounds.height * k) };
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
-    const src = sources.find((s) => s.display_id === String(d.id)) || sources[0];
-    if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
-    png = src.thumbnail.toPNG();
-  }
+  const shot = await require('./linux/screenshot').grab({
+    methods, multi: screen.getAllDisplays().length > 1, display: d,
+  });
+  if (!shot) throw new Error('no picture of the screen');
+  const png = shot.toPNG();
   const dir = path.join(app.getPath('pictures'), 'Screenshots');
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');

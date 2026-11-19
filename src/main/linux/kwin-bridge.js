@@ -21,8 +21,8 @@
 // script), `game` (the library folder of the game in front, from its process: games.js), `usb` and
 // `plug` (the removable drives and the last device plugged in or out: devices.js).
 //
-// The same watcher also answers what apps are open (apps-linux.js, through current()) and where the
-// pointer is (windows.js).
+// The same watcher also answers what apps are open and where the pointer is; the adapter that
+// wraps it hands both on (adapters.js).
 //
 // No npm dependency: the D-Bus side is dbus-mini.js. The script is written to scriptDir (a real
 // path: KWin cannot read inside an asar) and loaded/unloaded through org.kde.KWin /Scripting;
@@ -52,8 +52,6 @@ const MAX_PIDS = 64;
 // (wayland-toggle's PADDING), guaranteeing a report inside zone before reaching an interactive rect.
 const ZONE_PAD = 48;
 const ZONE_STEP = 32;
-
-let active = null; // the running watcher: what apps-linux.js asks (current())
 
 // KWin's logical pixels -> the X screen's pixels. 'logical' (default): the same thing, which is
 // right while XWayland is scaled by KWin (Plasma's default, "Legacy applications: scaled by the
@@ -271,7 +269,6 @@ function startKWinWatch({
     clearTimeout(firstTimer);
     clearTimeout(moveTimer);
     watched.stop();
-    if (active === api) active = null;
     if (bus) {
       bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] })
       .catch(() => {})
@@ -480,19 +477,14 @@ function startKWinWatch({
       clearTimeout(firstTimer);
       clearTimeout(moveTimer);
       watched.stop();
-      if (active === api) active = null;
       if (!bus) return;
       bus.call({ ...KWIN, member: 'unloadScript', args: [['s', SCRIPT_NAME]] }).catch(() => {}).finally(() => bus.close());
     },
   };
-  active = api;
   return api;
 }
 
-// the running watcher, or null (apps-linux.js, windows.js)
-const current = () => (active && active.ready ? active : null);
-
 module.exports = {
-  startKWinWatch, writeScript, current, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels,
+  startKWinWatch, writeScript, fromPayload, windowsOf, parseCursor, parseMove, applyMove, toXPixels,
   BUS_NAME, OBJECT_PATH, SCRIPT_NAME, ZONE_PAD, ZONE_STEP,
 };

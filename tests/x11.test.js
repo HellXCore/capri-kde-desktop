@@ -340,19 +340,21 @@ test('watcher: failures in a row only count until a poll works again', async () 
   assert.equal(timer.queue.length, 1);
 });
 
-// ---- windows.js: the Linux path goes by the session, the Windows one is unchanged ----
+// ---- windows.js: the feed, and nothing that starts a watcher ----
 
-function loadWindows(platform, { spawn, setTimeout: later = setTimeout, clearTimeout: cancel = clearTimeout } = {}) {
+function loadWindows(platform, { spawn, displays = [], setTimeout: later = setTimeout, clearTimeout: cancel = clearTimeout } = {}) {
   const module = { exports: {} };
   const filename = path.resolve(__dirname, '../src/main/windows.js');
   const spawned = [];
-  const electron = { screen: { getAllDisplays: () => [], screenToDipRect: (_w, r) => r } };
+  const electron = { screen: { getAllDisplays: () => displays, screenToDipRect: (_w, r) => r } };
   const context = {
     module, exports: module.exports, __dirname: path.dirname(filename), console: quiet, Buffer, setTimeout: later, clearTimeout: cancel,
     process: { platform, env: {}, pid: 1 },
     require(id) {
       if (id === 'electron') return electron;
       if (id === 'node:child_process') return { spawn: (...a) => { spawned.push(a); if (spawn) return spawn(...a); throw new Error('spawned'); } };
+      // relative to the module being loaded, not to this test file
+      if (id.startsWith('.')) return require(path.resolve(path.dirname(filename), id));
       return require(id);
     },
   };
@@ -360,21 +362,24 @@ function loadWindows(platform, { spawn, setTimeout: later = setTimeout, clearTim
   return { windows: module.exports, spawned };
 }
 
-test('windows.js on Linux: XWayland and Wayland never start tracking nor PowerShell', () => {
+test('windows.js is the feed only: no watcher, no child process', () => {
   const { windows, spawned } = loadWindows('linux');
-  const overlay = { getNativeWindowHandle: () => Buffer.alloc(8), isDestroyed: () => false, getBounds: () => ({ x: 0, y: 0, width: 10, height: 10 }) };
-  for (const session of ['xwayland', 'wayland', null]) {
-    const states = [];
-    const watch = windows.startWindowWatch({ overlay, session, onUpdate() {}, onState: (ok) => states.push(ok) });
-    assert.deepEqual(states, [false]);
-    watch.refresh();
-    watch.stop();
-  }
+  assert.deepEqual(Object.keys(windows).sort(), ['createFeed', 'toDip']);
   assert.equal(spawned.length, 0);
 });
 
+test('feed units: DIPs as they are, X pixels through the display scale', () => {
+  const displays = [{ bounds: { x: 0, y: 0, width: 1280, height: 720 }, scaleFactor: 2 }];
+  const { windows } = loadWindows('linux', { displays });
+  const rect = { x: 200, y: 100, w: 800, h: 600 };
+  // spread: a rect made inside the vm carries that context's Object.prototype, which deepStrictEqual
+  // counts as a difference of its own
+  assert.deepEqual({ ...windows.toDip(rect, 'dip') }, { x: 200, y: 100, width: 800, height: 600 });
+  assert.deepEqual({ ...windows.toDip(rect, 'x-physical') }, { x: 100, y: 50, width: 400, height: 300 });
+});
+
 test('feed: physical pixels to the overlay, only what overlaps her screen', () => {
-  const { windows } = loadWindows('win32');
+  const { windows, spawned } = loadWindows('linux');
   const got = [];
   const overlay = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 0, width: 800, height: 600 }) };
   const feed = windows.createFeed({ overlay, onUpdate: (d) => got.push(d), toDip: (w) => ({ x: w.x / 2, y: w.y / 2, width: w.w / 2, height: w.h / 2 }) });
@@ -384,4 +389,5 @@ test('feed: physical pixels to the overlay, only what overlaps her screen', () =
   assert.equal(got[0].taskbar, false);
   feed.send();
   assert.equal(got.length, 2);
+  assert.equal(spawned.length, 0);
 });

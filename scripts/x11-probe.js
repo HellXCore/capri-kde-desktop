@@ -5,13 +5,17 @@
 //   xmessage -geometry 420x260+150+120 probe & node scripts/x11-probe.js
 // An extra check only: Xvfb with openbox is not a desktop people use (see docs/LINUX_WINDOW_TRACKING.md).
 
-const { linuxSession } = require('../src/main/capabilities');
+const { createCapabilities } = require('../src/main/capabilities');
 const { startX11Watch } = require('../src/main/linux/x11-watch');
 
-const session = linuxSession(process.env);
+const server = createCapabilities().facts.server;
+const session = server === 'none' ? null : server;
 let seen = null;
 let done = false;
 let watch = null;
+if (session !== 'x11') {
+  console.log('[x11-probe] needs a real X server: env -u XDG_SESSION_TYPE -u WAYLAND_DISPLAY xvfb-run -a … (openbox + xmessage)');
+}
 const timer = setTimeout(() => finish('no window seen within 15 s'), 15000);
 watch = startX11Watch({
   session,

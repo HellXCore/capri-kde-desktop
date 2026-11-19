@@ -1,9 +1,14 @@
 'use strict';
 
-// A picture of the screen on Linux. Under XWayland (platform_ozone=x11) Electron's desktopCapturer sees only
-// the X windows, so a Wayland desktop shows up empty or black. KDE's Spectacle takes it from KWin
-// itself, with no prompt. Resolves with a nativeImage, or null where Spectacle is not there or
-// fails (the caller falls back to desktopCapturer).
+// A picture of the screen on Linux. The stack of methods is put together outside, by the wiring:
+// what the running adapter offers first, then what this display server can do on its own. This
+// file runs the stack in order and returns the first picture that came out; it never looks at
+// the desktop's name.
+//
+//   spectacle  KDE's own tool, taking it from KWin with no prompt (an adapter's method)
+//   portal     xdg-desktop-portal: the standard Wayland way, may put a dialog up
+//   capturer   Electron's desktopCapturer, the X11 way. Under XWayland it sees only the X windows,
+//              and on native Wayland it comes out empty
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -87,47 +92,53 @@ if not success:
     sys.exit(1)
 `;
 
+// What each display server can do by itself, with no adapter around.
+const BASE_METHODS = {
+  wayland: ['portal'],
+  xwayland: ['capturer'],
+  x11: ['capturer'],
+  none: [],
+};
+
 const toolkits = {
   spectacle: (file, multi, exec) =>
     exec('spectacle', ['-b', '-n', multi ? '-m' : '-f', '-o', file]),
 
   portal: (file, multi, exec) =>
     exec('python3', ['-c', PORTAL_SCREENSHOT_SCRIPT, file]),
-
-  grim: (file, multi, exec) =>
-    exec('grim', [file]),
 };
 
-// Check environment
-function getPreferredOrder() {
-  const desktop = (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase();
-
-  // KDE Plasma
-  if (desktop.includes('kde')) {
-    return ['spectacle', 'portal', 'grim'];
-  }
-
-  // Tiling / wlroots (Hyprland, Sway, Niri, etc)
-  if (desktop.includes('sway') || desktop.includes('hyprland') || desktop.includes('wlroots')) {
-    return ['grim', 'portal', 'spectacle'];
-  }
-
-  // GNOME (XFCE, Cosmic, Flatpak, etc)
-  return ['portal', 'spectacle', 'grim'];
+// One screen at its own pixels, through Electron. `display`: the screen to take.
+async function fromCapturer({ display, capturer }) {
+  if (!display) throw new Error('no display to capture');
+  const k = display.scaleFactor || 1;
+  const size = { width: Math.round(display.bounds.width * k), height: Math.round(display.bounds.height * k) };
+  const sources = await capturer.getSources({ types: ['screen'], thumbnailSize: size });
+  const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+  if (!src || src.thumbnail.isEmpty()) throw new Error('no picture of the screen');
+  return src.thumbnail;
 }
-
+// methods: the stack to try, in order.
 // multi: more than one screen, so only the one the pointer is on (-m); else the whole desktop (-f)
-async function grab({ multi = false, exec = run, nativeImage = require('electron').nativeImage } = {}) {
+async function grab({
+  methods = [], multi = false, display = null, exec = run,
+  nativeImage = require('electron').nativeImage,
+  capturer = require('electron').desktopCapturer,
+} = {}) {
   const file = path.join(os.tmpdir(), `capri-shot-${randomUUID()}.png`);
-  const methods = getPreferredOrder();
   try {
     for (const method of methods) {
       try {
-        await toolkits[method](file, multi, exec);
-        const image = nativeImage.createFromPath(file);
-        if (!image.isEmpty()) return image;
+        let image = null;
+        if (method === 'capturer') {
+          image = await fromCapturer({ display, capturer });
+        } else if (toolkits[method]) {
+          await toolkits[method](file, multi, exec);
+          image = nativeImage.createFromPath(file);
+        }
+        if (image && !image.isEmpty()) return image;
       } catch {
-        // tool error or missing, trying next
+        // this method is not there, or failed: the next one in the stack
       }
     }
     return null;
@@ -136,4 +147,4 @@ async function grab({ multi = false, exec = run, nativeImage = require('electron
   }
 }
 
-module.exports = { grab };
+module.exports = { grab, BASE_METHODS };
