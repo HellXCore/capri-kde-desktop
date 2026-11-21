@@ -19,7 +19,7 @@
 // Since Electron 43 the window's frame hints reset the input region on every bounds, state and theme
 // change (electron#54393), so it is said again after those, not only when the rectangles change.
 
-const { createToggleRegion } = require('./wayland-toggle');
+const { createToggleRegion } = require('../platform/input/toggle');
 
 // The first Electron major whose win.setShape() sets the input region on native Wayland. Not known
 // yet (electron#54858 is open): null, so `shape` is only used when asked for (CAPRI_WAYLAND_INPUT).

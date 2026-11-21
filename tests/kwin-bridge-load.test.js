@@ -12,7 +12,7 @@ const path = require('node:path');
 const {
     startKWinWatch, BUS_NAME, OBJECT_PATH, SCRIPT_NAME, ZONE_PAD, ZONE_STEP,
 } = require('../src/main/linux/kwin-bridge');
-const { PADDING } = require('../src/main/linux/wayland-toggle');
+const { PADDING } = require('../src/main/platform/input/toggle');
 
 process.env.XDG_CURRENT_DESKTOP = 'KDE'; // this file runs in its own process (node --test)
 const OWNER = ':1.42';                   // org.kde.KWin on the bus

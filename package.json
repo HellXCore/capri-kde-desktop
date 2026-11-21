@@ -18,10 +18,12 @@
     "hooks:agy:install": "node scripts/install-hooks-agy.js",
     "hooks:agy:uninstall": "node scripts/install-hooks-agy.js --uninstall",
     "check:llm": "node scripts/check-llm.js",
-    "test": "node --test tests/*.test.js",
+    "test": "node --test tests/*.test.js tests/golden/*.test.js tests/arch/*.test.js tests/contract/*.test.js",
     "test:hooks": "node --test tests/hooks.test.js",
     "test:smoke": "node scripts/smoke-test.js",
     "test:x11": "node scripts/x11-probe.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "bench": "node scripts/bench-idle.js",
     "updater:smoke": "node scripts/updater-smoke.js",
     "dist": "electron-builder --linux AppImage deb --x64 --publish never"
   },
@@ -37,16 +39,18 @@
     "node": ">=22.12.0"
   },
   "overrides": {
-  "form-data": "^4.0.6",
-  "qs": "^6.16.0",
-  "tar": "^7.5.11",
-  "tough-cookie": "^4.1.3",
-  "uuid": "^11.1.1",
-  "xml2js": "^0.5.0"
+    "form-data": "^4.0.6",
+    "qs": "^6.16.0",
+    "tar": "^7.5.11",
+    "tough-cookie": "^4.1.3",
+    "uuid": "^11.1.1",
+    "xml2js": "^0.5.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "electron": "^44.9.3",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@fontsource/chakra-petch": "^5.3.0",

@@ -164,6 +164,7 @@ test('bounding and none: nothing is claimed that cannot be done', () => {
   none.reapply();
   assert.equal(none.stats(), null);
   assert.deepEqual(bare.told.shapes, []);
-  assert.deepEqual(bare.told.ignore, []);
+  // the click-through hotfix asserts passthrough once at creation; set/pointer/reapply add nothing
+  assert.deepEqual(bare.told.ignore, [true]);
   none.close();
 });

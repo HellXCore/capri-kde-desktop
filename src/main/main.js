@@ -15,10 +15,13 @@ const { TRAY, LANGS } = require('./labels');
 const lang = require('./lang');
 const OVERLAY_TITLE = 'capri-overlay';
 const { createBridge } = require('./bridge');
-const { startAdapters } = require('./adapters');
+const adapters = require('./adapters');
 const { watchPower } = require('./power');
-const { createInputRegion } = require('./linux/input-region');
+const inputRegion = require('./linux/input-region');
+const { createLegacyShell } = require('./platform/shell/legacy-shell');
+const { createOverlayController } = require('./app/overlay-window');
 const { createInputRegion: createXShape } = require('./linux/x11-input');
+const { availability, rendererCaps } = require('./core/availability');
 const { createCapabilities, ozonePlatform } = require('./capabilities');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
@@ -42,29 +45,13 @@ const caps = createCapabilities({ ozone }); // the session follows what Electron
 // Startup facts and the intersection's name, for the log only
 console.log(`[capri] display: ${caps.signature} (server=${caps.facts.server}, desktop=${caps.facts.desktop}, Electron ${process.versions.electron}, --ozone-platform=${ozone || 'not given'}, `
   + `XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || '-'}, WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY || '-'}, DISPLAY=${process.env.DISPLAY || '-'})`);
-
-// KDE on Wayland: Capri's overlay must be a window KWin manages. "focusable: false" on Linux makes
-// the window stop interacting with the window manager, and KWin gives no keyboard input to such a
-// window. A managed window gets the keyboard while Capri's chat is open (overlay:focus, the script).
-// Whether KWin may run is the adapter declaration's answer: with no display server there is no
-// compositor to manage anything, whatever the desktop name says.
-const KWIN_MANAGED = caps.adapters().includes('kwin');
-
-// Native Wayland: where the window is and whether it is on top are the compositor's to decide;
-// Electron's setBounds and moveTop only ask for it there.
-const NATIVE_WAYLAND = caps.facts.server === 'wayland';
-
-// Ctrl+Alt+C: where the ceiling hands it to an adapter, the KWin script registers it as a real
-// global shortcut; Electron owns it everywhere else, and takes it back if the adapter gives up.
-const ADAPTER_SHORTCUT = caps.mechanisms().shortcut === 'adapter';
-
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
 const SMOKE = process.argv.includes('--smoke-test');
 if (SMOKE) {
   app.setPath('userData', process.env.CAPRI_SMOKE_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'capri-smoke-')));
   config.save({ welcomed: true, claude: false, muted: true, motion: 'reduced', render: process.platform === 'linux' ? 'software' : 'auto' });
-  if (process.platform === 'linux') app.commandLine.appendSwitch('use-angle', 'swiftshader');
+  app.commandLine.appendSwitch('use-angle', 'swiftshader');
   setTimeout(() => { console.error('[capri] smoke test timed out'); app.exit(1); }, 30000).unref();
 }
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
@@ -79,7 +66,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let overlay = null;
-let inputRegion = null; // where she takes the mouse (linux/input-region.js: X11 shape, or native Wayland's own way)
+let overlayCtl = null;  // owns the overlay window: place, stacking, keyboard, input (app/overlay-window.js)
+let desktopShell = null;       // LegacyShell: the DesktopShell port over the adapters (platform/shell/legacy-shell.js)
 let tray = null;
 let trayMenu = null; // Also what she opens when you right-click her
 let settings = null; // Capri settings window (settings-window.js), made in main()
@@ -87,7 +75,6 @@ let updates = null; // The app's updates (updates.js): what her settings and her
 let updateOffered = null; // The version her menu offers
 let updateSaid = null; // The version she has mentioned (once)
 let demoTimer = null;
-let windowWatch = null;
 let powerWatch = null; // Screen locked / asleep (power.js): her overlay pauses its decorative work
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
 let lastWindows = null;
@@ -96,7 +83,6 @@ let chatError = null;  // why not, when the provider said
 let chatErrorCode = null; // 'nokey' or 'nourl': what her setup should ask for
 // Ollama's cloud, as last seen: your account ({ name } or { signin }) and the models free with it
 let cloud = { at: 0, account: null, free: [] };
-let chatFocus = false;
 const chats = new Map(); // id -> AbortController of an answer being streamed
 
 const userSoundsDir = () => path.join(app.getPath('userData'), 'sounds');
@@ -177,10 +163,9 @@ function targetDisplay() {
 function moveOverlay(id) {
   if (!displays().some((d) => d.id === id)) return null;
   config.save({ displayId: id });
-  fitOverlay();
+  overlayCtl.fit();
   const { area } = overlayArea();
-  setOverlayBounds(area);
-  windowWatch?.refresh();
+  desktopShell?.refresh();
   rebuildTray();
   return area;
 }
@@ -195,148 +180,62 @@ function overlayArea() {
   return { area, gap: area.y + area.height - (workArea.y + workArea.height) };
 }
 
-// The `SetBounds` call, containing the current window parameters, is passed to the window system as a request
-// XWayland: this takes the form of a configuration change request, to which KWin responds by creating a new
-// window frame that occupies the entire screen. `fitOverlay` function is executed whenever a display event occurs,
-// or when there is a change in power state or settings. If the result is "false," no further action is required.
+const clock = { now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h) };
 
-let lastRequestedBounds = null;
+// What she can do right now: the shell's own report, gated by the agent's life cycle
+// (core/availability.js). The legacy feature matrix is the shell's business, not main's.
+const features = () => availability(desktopShell.caps(), desktopShell.health.last()?.state || 'idle');
 
-function setOverlayBounds(area) {
-  if (lastRequestedBounds &&
-      lastRequestedBounds.x === area.x && lastRequestedBounds.y === area.y &&
-      lastRequestedBounds.width === area.width && lastRequestedBounds.height === area.height) {
-    return false;
-  }
-  lastRequestedBounds = { x: area.x, y: area.y, width: area.width, height: area.height };
-  overlay.setBounds(area);
-  return true;
-}
-
-function fitOverlay() {
-  if (!overlay) return;
-  const { area, gap } = overlayArea();
-  setOverlayBounds(area);
-  inputRegion?.reapply();
-  overlay.webContents.send('overlay:resize', { width: area.width, height: area.height, gap });
-}
-// Compositor owns the overlay's geometry in native Wayland. Electron's setBounds is a request;
-// the KWin script applies it (selfRect) and reports the real place back (feed.origin). One
-// authority for every read, and one wait for confirmation — no fixed-delay guesses.
-function overlayBounds() {
-  return windowWatch?.origin?.() || overlay.getBounds();
-}
-async function waitForOverlay(area, timeoutMs = 1500) {
-  if (!NATIVE_WAYLAND) {
-    await new Promise((r) => setTimeout(r, 60));
-    setOverlayBounds(area);
-    return overlay.getBounds();
-  }
-  const t0 = Date.now();
-  for (;;) {
-    const o = windowWatch?.origin?.();
-    if (o && o.x === area.x && o.y === area.y && o.width === area.width && o.height === area.height) return o;
-    if (Date.now() - t0 >= timeoutMs) return o || overlay.getBounds();
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
-
-// The pointer reaches her click-through window through a mouse hook, and Windows drops a hook that
-// doesn't answer in time without a word (waking from sleep, a locked screen, a stall): she can't be
-// clicked anymore. Off then on puts in a new one; her place on top and her size are set again too.
-function rearmOverlay() {
-  if (!overlay || overlay.isDestroyed()) return;
-  if (process.platform !== 'linux') {
-    overlay.setIgnoreMouseEvents(false);
-    overlay.setIgnoreMouseEvents(true, { forward: true });
-  }
-  if (!NATIVE_WAYLAND) {
-    overlay.setAlwaysOnTop(true, 'screen-saver');
-    if (KWIN_MANAGED && !chatFocus) overlay.setFocusable(false);
-  }
-  fitOverlay();
-  sendCommand('rearmed');
-}
-
-// Back on top of everything, the taskbar included (it comes up over her when it's clicked). Twice:
-// the taskbar can come up again a moment later, as its menus and previews open.
-function raiseOverlay() {
-  if (NATIVE_WAYLAND) return;
-  for (const wait of [0, 400]) {
-    setTimeout(() => {
-      if (!overlay || overlay.isDestroyed()) return;
-      overlay.setAlwaysOnTop(true, 'screen-saver');
-      overlay.moveTop();
-    }, wait);
-  }
-}
-
+// The overlay's window, its place and its input are the controller's (app/overlay-window.js); the
+// adapters, the input policy, the screenshot stack and Ctrl+Alt+C are LegacyShell's. Main wires the
+// dependencies (the window does not exist yet: the shell's overlay port reads it lazily).
 function createOverlay() {
-  overlay = new BrowserWindow({
-    ...overlayArea().area,
-    transparent: true,
-    backgroundColor: '#00000000',
-    frame: false,
-    resizable: false,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    focusable: KWIN_MANAGED, // (set to false again below there, and only true while Capri chat is open)
-    ...(KWIN_MANAGED ? { title: OVERLAY_TITLE } : {}),
-    hasShadow: false,
-    alwaysOnTop: true,
-    type: undefined,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, '..', 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      backgroundThrottling: false,
-      autoplayPolicy: 'no-user-gesture-required',
+  ({ shell: desktopShell } = createLegacyShell({
+    caps,
+    log: console,
+    adapters,
+    inputRegion,
+    screenshot: linuxShot,
+    overlay: {
+      isDestroyed: () => !overlay || overlay.isDestroyed(),
+      getBounds: () => overlay.getBounds(),
+      getNativeWindowHandle: () => overlay.getNativeWindowHandle(),
+      setTitle: (t) => overlay.setTitle(t),
     },
+    area: () => overlayArea().area,
+    apps, launch, files,
+    shortcuts: {
+      register: (accel, fn) => globalShortcut.register(accel, fn),
+      unregister: (accel) => globalShortcut.unregister(accel),
+      isRegistered: (accel) => globalShortcut.isRegistered(accel),
+    },
+  }));
+  overlayCtl = createOverlayController({
+    BrowserWindow, shell: desktopShell, clock, log: console, nativeTheme,
+    input: { xshape: createXShape, mode: desktopShell.inputKind() },
+    areaOf: () => overlayArea(),
+    onResize: (size) => overlay?.webContents.send('overlay:resize', size),
+    onRearm: () => sendCommand('rearmed'),
   });
-  
-  overlay.on('page-title-updated', (e) => e.preventDefault());
-  overlay.setAlwaysOnTop(true, 'screen-saver');
-  // Not focusable from the start. A click on must not make KWin activate the overlay 
-  // (listening the keyboard input is only while Capri's chat is open, overlay:focus)
-  if (KWIN_MANAGED) overlay.setFocusable(false);
-
-  // Linux: the window is drawn in full and takes the mouse only where she is. The mechanism is the
-  // ceiling's for this intersection; what can reach her window is decided by the display server it
-  // really is on. Empty before the first render, so the window does not intercept clicks across the
-  // screen (linux/input-region.js).
-  inputRegion = createInputRegion({
-    overlay,
-    mechanism: caps.mechanisms().input,
-    server: caps.session, // the real one: a forced policy does not change what her window is
-    nativeTheme,
-    xshape: createXShape,
-  });
-  console.log(`[capri] input region: ${inputRegion.kind} (ceiling ${caps.mechanisms().input}, server ${caps.session}, Electron ${process.versions.electron})`);
-
-  overlay.loadURL('capri://app/src/renderer/index.html');
-  // Always shown: put away, she's still there as her biochip in the corner. Sized again first:
-  // Windows keeps a new window inside the work area, and resting on the taskbar it covers it too.
-  overlay.once('ready-to-show', () => {
-    fitOverlay();
-    overlay.showInactive();
-    inputRegion?.reapply(); // once mapped
-    if (KWIN_MANAGED) overlay.setFocusable(false); // again, now that it is mapped
-  });
-  overlay.webContents.on('render-process-gone', (_e, details) => {
-    console.error('[capri] renderer gone:', details.reason);
-    if (SMOKE) app.exit(1);
-  });
-  if (DEV || SMOKE) {
-    overlay.webContents.on('console-message', (e) => {
+  overlay = overlayCtl.create({
+    preload: path.join(__dirname, '..', 'preload.js'),
+    url: 'capri://app/src/renderer/index.html',
+    managed: desktopShell.caps().overlay.focus === 'compositor',
+    title: OVERLAY_TITLE,
+    devtools: DEV && Boolean(process.env.CAPRI_DEVTOOLS),
+    onGone: (details) => {
+      console.error('[capri] renderer gone:', details.reason);
+      if (SMOKE) app.exit(1);
+    },
+    onConsoleMessage: (DEV || SMOKE) ? (e) => {
       const { level, message, lineNumber, sourceId } = e;
       console.log(`[renderer:${level}] ${message} (${String(sourceId).split('/').pop()}:${lineNumber})`);
-    });
-    if (DEV && process.env.CAPRI_DEVTOOLS) overlay.webContents.openDevTools({ mode: 'detach' });
+    } : null,
+  });
+  const server = caps.facts.server;
+  console.log(`[capri] input region: ${overlayCtl.inputKind()} (ceiling ${caps.mechanisms().input}, server ${server}, Electron ${process.versions.electron})`);
+  if (overlayCtl.inputKind() === 'passthrough') {
+    console.warn(`[capri] input region: ${caps.mechanisms().input} cannot reach a ${server === 'none' ? 'display-less' : server} window here: she will be seen, but will not take clicks`);
   }
 }
 
@@ -384,7 +283,7 @@ const DEMO_TERMINAL = `<body style="margin:0;background:#14101c;color:#8f8aa3;fo
 function demoWindow(open) {
   demoWin?.destroy();
   demoWin = null;
-  if (!open || !caps.has('windowTracking')) return false;
+  if (!open || !features().windowTracking) return false;
   const b = overlay.getBounds();
   demoWin = new BrowserWindow({
     x: Math.round(b.x + b.width * 0.5 - 310), y: Math.round(b.y + b.height * 0.42), width: 620, height: 300,
@@ -408,12 +307,13 @@ function resolveLang(setting) {
 // What the overlay gets: `lang` is the resolved one, `langSetting` what the user picked.
 function rendererConfig() {
   const { apiKeys, ...cfg } = config.load(); // the keys stay here: the overlay only learns which ones are set
-  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: lang.langSetting(cfg.lang, LANGS), floorGap: overlayArea().gap, caps: caps.forRenderer() };
+  return { ...cfg, platform: process.platform, keys: Object.keys(apiKeys || {}), assistant: activeAssistant().id, lang: resolveLang(cfg.lang), langSetting: lang.langSetting(cfg.lang, LANGS), floorGap: overlayArea().gap, caps: rendererCaps(features()) };
 }
 
 // What her settings window shows (settings-view.js), from the config and what's known here.
 function settingsFacts() {
   const { apiKeys, ...cfg } = config.load(); // the keys stay here: the window learns which are saved, no more
+  const f = features();
   const screens = displays();
   const current = targetDisplay();
   return {
@@ -432,10 +332,10 @@ function settingsFacts() {
     hooksInstalled: cfg.claude ? Boolean(activeHooks().status().installed) : false,
     provider: llm.PROVIDERS[cfg.provider]?.label || cfg.provider,
     model: pickModel(cfg),
-    features: caps.all(),
-    autostart: caps.has('autostart') && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+    features: f,
+    autostart: f.autostart && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
     screen: { index: Math.max(0, screens.findIndex((d) => d.id === current.id)), count: screens.length, width: current.size.width, height: current.size.height },
-    about: { version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron, session: caps.session },
+    about: { version: app.getVersion(), platform: process.platform, arch: process.arch, electron: process.versions.electron, session: caps.facts.server === 'none' ? null : caps.facts.server },
     updates: updates?.view(),
   };
 }
@@ -467,7 +367,7 @@ function settingsContext() {
     assistants: Object.keys(ASSISTANTS),
     models: chatModels,
     displays: displays().map((d) => d.id),
-    features: caps.all(),
+    features: features(),
   };
 }
 
@@ -547,8 +447,8 @@ function resetSettings() {
   }
   if (before.displayId !== config.DEFAULTS.displayId) {
     // back on the main screen: her window there, and she learns of it
-    fitOverlay();
-    windowWatch?.refresh();
+    overlayCtl?.fit();
+    desktopShell?.refresh();
     rebuildTray();
     sendCommand('screens');
   }
@@ -570,8 +470,8 @@ function updateConfig(patch, { strict = false } = {}) {
   if (strict) config.commit(patch);
   else config.save(patch);
   if ('rest' in patch) {
-    fitOverlay(); // the taskbar in her window or not
-    windowWatch?.refresh();
+    overlayCtl?.fit(); // the taskbar in her window or not
+    desktopShell?.refresh();
   }
   return broadcastConfig();
 }
@@ -579,6 +479,7 @@ function updateConfig(patch, { strict = false } = {}) {
 function rebuildTray() {
   if (!tray) return;
   const cfg = config.load();
+  const f = features();
   const hookState = activeHooks().status();
   const watched = activeAssistant();
   const t = Object.fromEntries(Object.entries(TRAY[resolveLang(cfg.lang)]).map(([key, value]) =>
@@ -696,8 +597,8 @@ function rebuildTray() {
     },
     { label: t.wander, type: 'checkbox', checked: cfg.wander, click: (item) => updateConfig({ wander: item.checked }) },
     {
-      label: caps.has('windowTracking') ? t.possess : `${t.possess} (${t.unavailable})`,
-      enabled: caps.has('windowTracking'), type: 'checkbox', checked: caps.has('windowTracking') && cfg.possess,
+      label: f.windowTracking ? t.possess : `${t.possess} (${t.unavailable})`,
+      enabled: f.windowTracking, type: 'checkbox', checked: f.windowTracking && cfg.possess,
       click: (item) => updateConfig({ possess: item.checked }),
     },
     // her jealousy also comes from the other assistants' hooks, not only from the window in front
@@ -769,10 +670,10 @@ function rebuildTray() {
       })),
     },
     {
-      label: caps.has('autostart') ? t.startup : `${t.startup} (${t.unavailable})`,
+      label: f.autostart ? t.startup : `${t.startup} (${t.unavailable})`,
       type: 'checkbox',
-      enabled: caps.has('autostart'),
-      checked: caps.has('autostart') && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+      enabled: f.autostart,
+      checked: f.autostart && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
     },
     // her hooks, while she watches Claude Code
@@ -897,20 +798,11 @@ async function chatWithFallback(cfg, messages, send, signal, streamed) {
   }
 }
 
-// The screenshot stack: what the running adapter offers, then what this display server can do on
-// its own. The server is the real one — a capture method has to reach the screen as it actually is.
-const shotMethods = () => [
-  ...(windowWatch?.methods().screenshot || []),
-  ...(linuxShot?.BASE_METHODS[caps.session || 'none'] || []),
-];
-
 // She looks at your screen (look.js): a picture of the screen she's on, kept here in memory a moment
 // for her AI to look at, never written anywhere. 1280 px wide at most: enough to read, light to send.
 const snaps = new Map(); // id -> the picture, base64 JPEG
 async function snapScreen() {
-  const shot = linuxShot && await linuxShot.grab({
-    methods: shotMethods(), multi: displays().length > 1, display: targetDisplay(),
-  });
+  const shot = await desktopShell.os.screenshot({ display: targetDisplay(), multi: displays().length > 1 });
   if (!shot) throw new Error('no picture of the screen');
   const { width } = shot.getSize();
   return (width > 1280 ? shot.resize({ width: 1280 }) : shot).toJPEG(72).toString('base64');
@@ -993,24 +885,23 @@ function registerIpc() {
     }
   });
   ipcMain.on('overlay:shape', (_e, payload) => {
-  if (!overlay || overlay.isDestroyed() || process.platform !== 'linux') return;
-  const { rects, dpr } = payload || {};
-  inputRegion?.set(Array.isArray(rects) ? rects : [], dpr);
-  windowWatch?.setZones?.(Array.isArray(rects) ? rects : []);
-});
-  ipcMain.on('overlay:rearm', () => rearmOverlay()); // the pointer moved over her and she never heard of it
+  if (process.platform !== 'linux') return;
+    const { rects, dpr } = payload || {};
+    overlayCtl?.setZones({ rects: Array.isArray(rects) ? rects : [], dpr });
+  });
+  ipcMain.on('overlay:rearm', () => overlayCtl?.rearm()); // the pointer moved over her and she never heard of it
   ipcMain.handle('overlay:cursor', () => {
     // KDE Wayland: XWayland only follows the pointer over X windows, so Electron's own 
     // point goes stale over native Wayland ones; the KWin script knows where it really is
-    const p = windowWatch?.cursor?.() || screen.getCursorScreenPoint();
+    const p = desktopShell.cursor() || screen.getCursorScreenPoint();
     // native Wayland: a client does not know where its window is, KWin does
-    const b = overlayBounds();
+    const b = overlayCtl.bounds();
     const inside = p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
     return { x: p.x - b.x, y: p.y - b.y, inside, display: displayAt(p).id };
   });
   // your screens (their bounds), the one she's on, and where her window is
   ipcMain.handle('screens:list', () => {
-    const o = overlayBounds();
+    const o = overlayCtl.bounds();
     return {
       current: targetDisplay().id,
       origin: { x: o.x, y: o.y },
@@ -1020,7 +911,7 @@ function registerIpc() {
   ipcMain.handle('screens:move', async (_e, id) => {
     const area = moveOverlay(id);
     if (!area) return null;
-    const o = await waitForOverlay(area);
+    const o = await overlayCtl.place(area);
     return { origin: { x: o.x, y: o.y }, width: o.width, height: o.height, gap: overlayArea().gap };
   });
   ipcMain.handle('config:get', () => rendererConfig());
@@ -1045,7 +936,9 @@ function registerIpc() {
   ipcMain.handle('updates:download', (e) => (settings?.owns(e.sender) ? updates?.download() : null));
   // "Update and restart", confirmed in the window first (settings.js confirmUpdate)
   ipcMain.handle('updates:install', (e, confirmed) => (settings?.owns(e.sender) ? updates?.install(async () => confirmed === true) : null));
-  ipcMain.on('updates:page', (e) => settings?.owns(e.sender) && isReleasePage(updates?.page()) && shell.openExternal(updates.page()));
+  ipcMain.on('updates:page', (e) => {
+    if (settings?.owns(e.sender) && isReleasePage(updates?.page())) shell.openExternal(updates.page());
+  });
   ipcMain.handle('hooks:status', () => activeHooks().status());
   ipcMain.handle('config:set', (_e, patch) => updateConfig(patch));
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
@@ -1134,7 +1027,7 @@ function registerIpc() {
     return { models: setup.MODELS, cloud: free, ram: os.totalmem(), keyed: Object.keys(setup.KEY_PAGES) };
   });
   ipcMain.handle('setup:ollama', () => setup.ollamaState());
-  ipcMain.handle('setup:install', () => (caps.has('ollamaInstall')
+  ipcMain.handle('setup:install', () => (features().ollamaInstall
     ? setup.installOllama((line) => progress({ kind: 'install', line }))
     : { ok: false, unsupported: true }));
   ipcMain.handle('setup:start', async () => {
@@ -1173,13 +1066,13 @@ function registerIpc() {
     return { ok: false, error };
   });
   ipcMain.on('setup:keyPage', (_e, provider) => setup.KEY_PAGES[provider] && shell.openExternal(setup.KEY_PAGES[provider]));
-  ipcMain.handle('setup:launch', (_e, integration) => (caps.has('ollamaLaunch') ? setup.launchThroughOllama(integration) : { ok: false, unsupported: true }));
+  ipcMain.handle('setup:launch', (_e, integration) => (features().ollamaLaunch ? setup.launchThroughOllama(integration) : { ok: false, unsupported: true }));
   // closing an app you asked her to close, once you've clicked to confirm (apps.js)
   const appInfo = (app) => app && { name: app.process, label: app.label };
-  const appWatch = () => windowWatch?.apps() || null; // the adapter's windows, while it is running
-  ipcMain.handle('apps:list', async () => (caps.has('appList') ? (await apps.list({ watch: appWatch() }).catch(() => [])).map(appInfo) : []));
-  ipcMain.handle('apps:find', async (_e, wanted) => (caps.has('appList') ? appInfo(await apps.find(wanted, { watch: appWatch() }).catch(() => null)) : null));
-  ipcMain.handle('apps:close', (_e, { name, force }) => (caps.has('appClose')
+  const appWatch = () => desktopShell.appWatch(); // the adapter's windows, while it is running
+  ipcMain.handle('apps:list', async () => (features().appList ? (await apps.list({ watch: appWatch() }).catch(() => [])).map(appInfo) : []));
+  ipcMain.handle('apps:find', async (_e, wanted) => (features().appList ? appInfo(await apps.find(wanted, { watch: appWatch() }).catch(() => null)) : null));
+  ipcMain.handle('apps:close', (_e, { name, force }) => (features().appClose
     ? apps.close(name, { force, watch: appWatch() }).catch((err) => ({ error: err.message }))
     : { unsupported: true }));
   // opening things you ask her to (launch.js): an app or a game, your music, a website
@@ -1192,27 +1085,19 @@ function registerIpc() {
   // your files (files.js): a search, opening what it found, a screenshot, a search on the web
   ipcMain.handle('files:search', (_e, query) => files.search(query).catch(() => []));
   ipcMain.handle('files:open', (_e, { file, reveal }) => files.open(String(file), { reveal: Boolean(reveal) }).then(() => true, () => false));
-  ipcMain.handle('files:screenshot', () => files.screenshot(targetDisplay(), { methods: shotMethods() }).catch(() => null));
+  ipcMain.handle('files:screenshot', () => files.screenshot(targetDisplay(), { methods: desktopShell.caps().screenshot }).catch(() => null));
   ipcMain.handle('web:search', (_e, query) => {
     const q = String(query || '').trim().slice(0, 300);
     if (!q) return false;
     return shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(q)}`).then(() => true, () => false);
   });
   ipcMain.handle('apps:launch', (_e, item) => launch.launch(item).then(() => ({ ok: true }), (err) => ({ ok: false, error: err.message })));
-  ipcMain.handle('apps:media', (_e, action) => (caps.has('mediaKeys') ? launch.media(action) : false));
+  ipcMain.handle('apps:media', (_e, action) => (features().mediaKeys ? launch.media(action) : false));
   ipcMain.handle('apps:music', (_e, query) => launch.music(query).catch(() => false));
   ipcMain.handle('apps:site', (_e, address) => launch.site(address).catch(() => false));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
   ipcMain.on('overlay:focus', (_e, on) => {
-    if (!overlay) return;
-    chatFocus = Boolean(on);
-    overlay.setFocusable(Boolean(on));
-    // KDE Wayland: KWin does not hand the keyboard to a window that asks for it, so its script
-    // activates her overlay, and gives it back to the window you were on when her chat is done
-    windowWatch?.focus?.(Boolean(on));
-    if (on) overlay.focus();
-    else overlay.blur();
-    inputRegion?.reapply(); // The hints have changed — the region might have been reset.
+    overlayCtl?.focus(Boolean(on));
   });
   // her report card's copy button: a picture of that part of the overlay, on the clipboard
   ipcMain.handle('panel:copy', async (_e, rect) => {
@@ -1512,62 +1397,45 @@ function main() {
     updates = startUpdates({ app, smoke: SMOKE, onChange: updatesChanged });
     createOverlay();
     createTray();
-    // an adapter that starts or gives up changes what she offers: the menu and the overlay hear of it
-    caps.onChange(broadcastConfig);
-    windowWatch = startAdapters({
-      caps,
-      overlay,
-      session: caps.session, // the watcher's own guard reads it; the choice is the mode's
-      onState: (ok) => {
-        // What the adapter provides is already in caps (adapters.js). What is left here is the
-        // pointer channel and the shortcut handover.
-        // Native Wayland: her window takes the mouse only while the pointer is said to be over her;
-        // if it never is, nothing reaches her, and the log says why that may be.
-        if (ok && KWIN_MANAGED && inputRegion?.kind === 'toggle') {
-          setTimeout(() => {
-            const s = inputRegion?.stats?.();
-            if (s && s.pointers === 0) {
-              console.warn('[capri] input region: the pointer was never reported in her window\'s coordinates, so she takes no clicks. '
-                + 'The KWin script may not find her window: see `journalctl --user -b | grep -i capri-windows`');
-            }
-          }, 8000);
-        }
-        // The script owns Ctrl+Alt+C while it runs (Electron never registers it first then: see
-        // below); when the script gives up, Electron's own takes over.
-        if (ADAPTER_SHORTCUT) {
-          if (ok) {
-            if (globalShortcut.isRegistered('Control+Alt+C')) globalShortcut.unregister('Control+Alt+C');
-          } else if (!globalShortcut.isRegistered('Control+Alt+C')) {
-            globalShortcut.register('Control+Alt+C', () => toggleVisible());
-          }
-        }
-      },
-      onCommand: (name) => name === 'toggle' && toggleVisible(),
-      onPointer: (p) => inputRegion?.pointer?.(p), // native Wayland: her window takes the mouse while it is over her
-      area: () => overlayArea().area, // and where it should be, which only the KWin script can see to
-      onUpdate: (data) => {
-        if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') raiseOverlay();
-        lastWindows = data;
-        overlay?.webContents.send('windows:update', data);
-      },
+    // What she offers follows the agent's life cycle: the menu, the overlay and the settings hear of
+    // it. Not on 'stopped': that is the shell being torn down at quit, when her window may already be
+    // destroyed — nobody is left to tell, and sending to it throws.
+    desktopShell.health.subscribe((h) => { if (h.state !== 'stopped') broadcastConfig(); });
+    // The shell owns the adapters, the input policy and Ctrl+Alt+C; main only reacts to what it says.
+    desktopShell.control.onHotkey.subscribe((id) => { if (id === 'stow') toggleVisible(); });
+    desktopShell.observe.frames.subscribe((data) => {
+      if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') overlayCtl?.raise();
+      lastWindows = data;
+      overlay?.webContents.send('windows:update', data);
     });
+    desktopShell.health.subscribe((h) => {
+      if (h.state !== 'ready') return;
+      // Native Wayland: her window takes the mouse only while the pointer is said to be over her;
+      // if it never is, nothing reaches her, and the log says why that may be.
+      if (shell.caps().overlay.focus === 'compositor' && overlayCtl?.inputKind() === 'toggle') {
+        setTimeout(() => {
+          const s = overlayCtl?.inputStats();
+          if (s && s.pointers === 0) {
+            console.warn('[capri] input region: the pointer was never reported in her window\'s coordinates, so she takes no clicks. '
+              + 'The KWin script may not find her window: see `journalctl --user -b | grep -i capri-windows`');
+          }
+        }, 8000);
+      }
+    });
+    desktopShell.start();
     if (!SMOKE) createBridge({
       port: PORT,
       // her own Claude Code chat's hooks would cover its answer with theirs
       onEvent: (evt) => !llm.isChatSession(evt.session_id) && overlay?.webContents.send('claude:event', evt),
       onDebug: DEV ? debugHandler : null,
     });
-    // Where an adapter owns Ctrl+Alt+C, Electron does not register it first and take it back later:
-    // on native Wayland Electron asks the desktop portal for it, that session is made after the fact,
-    // and closing it at once is an error from the portal (a script that never starts gives it back, above)
-    if (!ADAPTER_SHORTCUT) globalShortcut.register('Control+Alt+C', () => toggleVisible());
     llm.restoreClaude(readMemory().claude);
     if (!SMOKE) refreshModels(); // for her menu's model list
     if (!SMOKE) setTimeout(() => launch.launchables().catch(() => {}), 20000); // what she can open, before you ask
     // a screen plugged in, unplugged, or rearranged: her window fitted again, and she learns of it
     const screensChanged = () => {
-      fitOverlay();
-      windowWatch?.refresh();
+      overlayCtl?.fit();
+      desktopShell?.refresh();
       rebuildTray();
       sendCommand('screens');
     };
@@ -1575,8 +1443,8 @@ function main() {
     screen.on('display-added', screensChanged);
     screen.on('display-removed', screensChanged);
     // after sleep or a locked screen, once Windows has settled
-    powerMonitor.on('resume', () => setTimeout(rearmOverlay, 2000));
-    powerMonitor.on('unlock-screen', () => setTimeout(rearmOverlay, 1000));
+    powerMonitor.on('resume', () => setTimeout(() => overlayCtl?.rearm(), 2000));
+    powerMonitor.on('unlock-screen', () => setTimeout(() => overlayCtl?.rearm(), 1000));
     // and meanwhile her overlay pauses what's only for show (power.js; the macOS window watcher
     // pauses its helper on the same events itself: windows.js). Main goes on: the bridge still
     // takes Claude Code's events and passes them on, she shows what matters once you're back.
@@ -1617,7 +1485,8 @@ function main() {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     powerWatch?.stop();
-    windowWatch?.stop();
+    desktopShell?.stop();
+    overlayCtl?.close();
   });
   app.on('window-all-closed', () => {});
 }

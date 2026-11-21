@@ -1,5 +1,10 @@
 'use strict';
 
+// Deprecated: the transitional capability matrix, kept for the legacy shell only. Its feature API
+// (all/has/set/onChange/forRenderer) is consumed by platform/shell/legacy-shell.js and the adapters
+// it drives; everything else asks core/availability.js over the DesktopShell port. The composition
+// root still constructs it and hands it to the shell. Removed when the platform agent lands.
+
 // Which display server Electron runs on, and which desktop is around it. Decided once at startup:
 // a different server means a restart with another --ozone-platform. Nothing outside this file
 // guesses at the environment.
@@ -119,6 +124,7 @@ function forcedFacts(asked) {
 
 // What the overlay is told, in its own words. Generated from FEATURES, so the two lists cannot
 // drift apart.
+/** @deprecated the renderer's vocabulary now lives in core/availability.js (rendererCaps). */
 const RENDERER_ALIASES = {
   windows: (f) => f.windowTracking,
   possess: (f) => f.windowTracking,
@@ -185,7 +191,7 @@ function detect({ platform = process.platform, env = process.env, ozone = null, 
     features: Object.fromEntries(FEATURES.map((name) => [name, ceiling?.features[name] === true])),
   };
 }
-
+/** @deprecated transitional: the legacy shell's feature matrix; see core/availability.js. */
 function createCapabilities(options = {}) {
   const base = detect(options);
   const dev = options.dev ?? isDev();
