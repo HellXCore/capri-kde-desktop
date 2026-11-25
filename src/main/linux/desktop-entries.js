@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { desktopTokens } = require('../core/env');
 
 const CACHE_MS = 10 * 60 * 1000; // installed apps hardly change
 
@@ -69,7 +70,7 @@ function onPath(cmd, env = process.env) {
 // (kde/foo.desktop is "kde-foo.desktop"). A file found in an earlier directory wins.
 function scan({ env = process.env, home = os.homedir() } = {}) {
   const keys = localeKeys(env);
-  const desktops = String(env.XDG_CURRENT_DESKTOP || '').split(':').filter(Boolean);
+  const desktops = desktopTokens(env);
   const byId = new Map();
   const walk = (root, dir, depth) => {
     let items = [];

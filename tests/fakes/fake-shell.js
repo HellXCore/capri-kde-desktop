@@ -44,12 +44,15 @@ const DEFAULT_CAPS = {
  *   emitFact: (f: import('../../src/main/core/ports').DevicesFact) => void,
  *   emitHotkey: (id: string) => void,
  *   setCaps: (patch?: object) => void,
- *   setHealth: (state: import('../../src/main/core/ports').AgentState, reason?: string) => void }}
+ *   setHealth: (state: import('../../src/main/core/ports').AgentState, reason?: string) => void,
+ *   setWorkArea: (answer: import('../../src/main/core/ports').DipRect | null | ((id: number) => import('../../src/main/core/ports').DipRect | null)) => void }}
  */
 function createFakeShell() {
   let caps = structuredClone(DEFAULT_CAPS);
   let state = 'idle';
   let stalled = false;
+  // what observe.workArea answers with: null by default (the caller's own fallback)
+  let workAreaAnswer = () => null;
   const pending = new Set(); // requests held by drive.stall(); release() or stop() settles them
   const journal = [];        // every call received, in order: { op, args }
 
@@ -77,7 +80,7 @@ function createFakeShell() {
   const shell = {
     caps: () => structuredClone(caps),
     health,
-    observe: { frames, pointer, facts, workArea: request('observe.workArea', () => null) },
+    observe: { frames, pointer, facts, workArea: request('observe.workArea', (id) => workAreaAnswer(id)) },
     overlay: {
       request: request('overlay.request', (r) => r), // the confirmed rect is the requested one
       raise: command('overlay.raise'),
@@ -135,6 +138,9 @@ function createFakeShell() {
   // touched, so a test can show 'degraded' while the shell still answers.
   const setHealth = (next, reason) => health.publish(reason === undefined ? { state: next } : { state: next, reason });
 
+// The work area the port answers with: a rect, null, or (id) => rect|null per display.
+  const setWorkArea = (answer) => { workAreaAnswer = typeof answer === 'function' ? answer : () => answer; };
+
   return {
     shell,
     // the contract suite's vocabulary
@@ -151,7 +157,7 @@ function createFakeShell() {
     },
     journal,
     emitFrame, emitPointer, emitFact, emitHotkey,
-    setCaps, setHealth,
+    setCaps, setHealth, setWorkArea,
   };
 }
 

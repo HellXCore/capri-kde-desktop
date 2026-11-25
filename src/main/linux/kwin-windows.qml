@@ -12,7 +12,7 @@
 //
 // so x11.buildSnapshot() turns it into the snapshot windows.js expects. On top of that: `ai`, the
 // AIs the window in front is (the title is matched here and never leaves KWin: only the keys do),
-// `front` (what is in front, for a game heuristic) and `outputs` (scales, for the pixel units).
+// `front` (what is in front, for a game heuristic) and `outputs` (scales, for XWayland clients).
 //
 // Window ids are KWin-side counters, not X11 ids (the KWin scripting API has no X11 window id).
 // Coordinates are KWin's global logical pixels.

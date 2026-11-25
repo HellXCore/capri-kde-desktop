@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-11-22T12:38:46.562Z",
+  "host": {
+    "electron": "44.10.1",
+    "node": "24.22.1",
+    "packaged": false,
+    "platform": "linux",
+    "arch": "x64",
+    "appPath": "/home/cheshire/Проекты/GitHub/capri-desktop/scripts/agent-spike"
+  },
+  "runs": [
+    {
+      "launcher": "utility",
+      "entry": "plain",
+      "entryPath": "/home/cheshire/Проекты/GitHub/capri-desktop/scripts/agent-spike/probe.js",
+      "ok": true,
+      "readyMs": 92,
+      "rssMB": 106.48,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "utility",
+          "parentPort": true,
+          "pid": 101016
+        },
+        "entry": {
+          "ok": true,
+          "file": "/home/cheshire/Проекты/GitHub/capri-desktop/scripts/agent-spike/probe.js",
+          "bytes": 182
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/home/cheshire/Проекты/GitHub/capri-desktop/node_modules/koffi/index.cjs",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 5,
+          "names": 151,
+          "path": "/home/cheshire/Проекты/GitHub/capri-desktop/src/main/linux/dbus-mini.js"
+        },
+        "rssMB": 106.48
+      },
+      "error": null,
+      "stderr": ""
+    },
+    {
+      "launcher": "fork",
+      "entry": "plain",
+      "entryPath": "/home/cheshire/Проекты/GitHub/capri-desktop/scripts/agent-spike/probe.js",
+      "ok": true,
+      "readyMs": 74,
+      "rssMB": 96.59,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "node",
+          "parentPort": false,
+          "pid": 101042
+        },
+        "entry": {
+          "ok": true,
+          "file": "/home/cheshire/Проекты/GitHub/capri-desktop/scripts/agent-spike/probe.js",
+          "bytes": 182
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/home/cheshire/Проекты/GitHub/capri-desktop/node_modules/koffi/index.cjs",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 4,
+          "names": 151,
+          "path": "/home/cheshire/Проекты/GitHub/capri-desktop/src/main/linux/dbus-mini.js"
+        },
+        "rssMB": 96.59
+      },
+      "error": null,
+      "stderr": ""
+    }
+  ],
+  "verdict": {
+    "utilityProcess": "inconclusive",
+    "fallback": null,
+    "reasons": [
+      "only the unpackaged (dev) run passed: the packaged matrix is required before deciding"
+    ]
+  }
+}

@@ -27,4 +27,33 @@ function detectEnv({ env, ozone, electronMajor }) {
   return { server, desktop: isKde ? 'kde' : 'other', plasma, ozone };
 }
 
-module.exports = { detectEnv };
+/**
+ * What Electron itself was asked to run on: the --ozone-platform flag on its command line, when it
+ * names one of the two servers. 'auto', anything else, or no app to ask yet: null (not known).
+ * This is the flag Electron actually got — not the desktop's session, and not a hint it may have
+ * ignored. Reads no environment variable; the caller hands the app in.
+ * @param {{ commandLine?: { getSwitchValue?: (key: string) => string } } | null | undefined} app
+ * @returns {'x11'|'wayland'|null}
+ */
+function ozonePlatform(app) {
+  try {
+    const asked = app?.commandLine?.getSwitchValue?.('ozone-platform');
+    if (asked === 'x11' || asked === 'wayland') return asked;
+  } catch {
+    // intentional: the switch is not readable yet (no app, or asked too early): not known
+  }
+  return null;
+}
+
+/**
+ * The desktop names XDG_CURRENT_DESKTOP lists, in order ('KDE:GNOME' -> ['KDE', 'GNOME']). The raw
+ * tokens, for a consumer that matches against them (a .desktop file's OnlyShowIn / NotShowIn); the
+ * normalized fact is detectEnv's `desktop`. Empty when the variable is unset.
+ * @param {Record<string, string|undefined>} env
+ * @returns {string[]}
+ */
+function desktopTokens(env) {
+  return String(env.XDG_CURRENT_DESKTOP || '').split(':').filter(Boolean);
+}
+
+module.exports = { detectEnv, ozonePlatform, desktopTokens };

@@ -35,7 +35,7 @@ function makeShell({ env = KDE_WAYLAND, ozone = 'wayland', id = 'kwin', adapter 
   const factory = (deps) => {
     wired.push(deps);
     return {
-      id, units: 'dip',
+      id,
       provides: id === 'kwin' ? ['windowTracking', 'appList', 'appClose'] : ['windowTracking'],
       methods: id === 'kwin' ? { screenshot: ['spectacle'] } : {},
       apps: { windows: () => [], closeApps() {} },
@@ -65,20 +65,32 @@ function makeShell({ env = KDE_WAYLAND, ozone = 'wayland', id = 'kwin', adapter 
 
 runShellContract('LegacyShell', () => makeShell());
 
-test('legacy: an adapter snapshot is delivered as the renderer payload; the confirmed place answers overlay.request', async () => {
+test('legacy: an adapter snapshot is delivered as a typed WindowsFrame; devices ride facts; the confirmed place answers overlay.request', async () => {
   const m = makeShell();
   await m.shell.start();
   const seen = [];
+  const facts = [];
   m.shell.observe.frames.subscribe((f) => seen.push(f));
-  m.adapter().onSnapshot({
+  m.shell.observe.facts.subscribe((f) => facts.push(f));
+  const snap = {
     fg: 7, taskbar: false, ai: [], game: null, usb: [], plug: null,
     self: { x: 0, y: 0, w: 1920, h: 1040 },
     wins: [{ id: 7, x: 100, y: 50, w: 400, h: 300, max: false }, { id: 8, x: 5000, y: 0, w: 100, h: 100, max: false }],
-  });
+  };
+  m.adapter().onSnapshot(snap);
   assert.equal(seen.length, 1);
-  assert.deepEqual(seen[0].wins, [{ id: 7, x: 100, y: 50, w: 400, h: 300, max: false }]); // the other screen's window is left out
-  assert.deepEqual(seen[0].self, { x: 0, y: 0, w: 1920, h: 1040 }); // the controller's confirmed place
+  assert.equal(seen[0].rev, 1);
+  assert.deepEqual(seen[0].wins, [
+    { id: 7, rect: { x: 100, y: 50, w: 400, h: 300 }, max: false },
+    { id: 8, rect: { x: 5000, y: 0, w: 100, h: 100 }, max: false },
+  ]); // global DIPs, unfiltered: the renderer projection filters
+  assert.deepEqual(seen[0].self, { x: 0, y: 0, w: 1920, h: 1040 });
+  assert.deepEqual(facts, []); // nothing plugged in: no fact
   assert.deepEqual(await m.shell.overlay.request({ x: 0, y: 0, w: 1920, h: 1040 }), { x: 0, y: 0, w: 1920, h: 1040 });
+  // a device change: a fact, not a new frame revision
+  m.adapter().onSnapshot({ ...snap, usb: ['STICK'] });
+  assert.equal(seen.length, 1);
+  assert.deepEqual(facts, [{ kind: 'devices', usb: ['STICK'], plug: null }]);
   await m.shell.stop();
 });
 

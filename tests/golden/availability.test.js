@@ -39,7 +39,7 @@ function makeShell(server, desktop) {
     [id]: (deps) => {
       wire = deps;
       return {
-        id, units: 'dip', provides: CONFIRMS[id], methods: {},
+        id, provides: CONFIRMS[id], methods: {},
         apps: { windows: () => [], closeApps() {} },
         origin: () => null, cursor: () => null, focus() {}, setZones() {}, stop() {},
       };

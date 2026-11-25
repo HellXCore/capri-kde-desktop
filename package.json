@@ -25,6 +25,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "bench": "node scripts/bench-idle.js",
     "updater:smoke": "node scripts/updater-smoke.js",
+    "spike:agent": "electron scripts/agent-spike",
+    "spike:agent:packaged": "node scripts/agent-spike-build.js",
     "dist": "electron-builder --linux AppImage deb --x64 --publish never"
   },
   "keywords": [

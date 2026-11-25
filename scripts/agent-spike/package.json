@@ -1,0 +1,5 @@
+{
+  "name": "capri-agent-spike",
+  "private": true,
+  "main": "host.js"
+}

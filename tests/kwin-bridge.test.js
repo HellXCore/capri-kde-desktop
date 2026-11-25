@@ -70,12 +70,12 @@ test('kwin payload: anything that is not version 1 is refused, garbage is droppe
   assert.equal(fromPayload(p).wins.some((w) => w.id === 10), false);
 });
 
-test('kwin units: logical pixels as they are, physical ones scaled by the output holding the centre', () => {
+test('kwin scale: system-scaled pixels as they are, client-scaled ones multiplied by the output at the centre', () => {
   const rect = { x: 100, y: 100, w: 400, h: 300 };
   const outputs = [{ x: 0, y: 0, w: 1920, h: 1080, s: 2 }];
-  assert.deepEqual(toXPixels(rect, outputs, 'logical'), rect);
-  assert.deepEqual(toXPixels(rect, outputs, 'physical'), { x: 200, y: 200, w: 800, h: 600 });
-  assert.deepEqual(toXPixels(rect, [], 'physical'), rect); // no output known: scale 1
+  assert.deepEqual(toXPixels(rect, outputs, 'system'), rect);
+  assert.deepEqual(toXPixels(rect, outputs, 'client'), { x: 200, y: 200, w: 800, h: 600 });
+  assert.deepEqual(toXPixels(rect, [], 'client'), rect); // no output known: scale 1
 });
 
 test('kwin watch: off outside a KDE Wayland session, no bus touched', () => {
@@ -153,8 +153,8 @@ test('kwin move: the light channel, and what it changes in the snapshot', () => 
   assert.equal(parseMove('10,0,0,0,600'), null); // no rectangle
   assert.equal(parseMove('nope'), null);
   const snap = fromPayload(payload());
-  const moved = applyMove(snap, { id: 10, x: 5, y: 6, w: 800, h: 600 }, [], 'logical');
+  const moved = applyMove(snap, { id: 10, x: 5, y: 6, w: 800, h: 600 }, [], 'system');
   assert.deepEqual(moved.wins.find((w) => w.id === 10), { id: 10, x: 5, y: 6, w: 800, h: 600, max: false });
-  assert.equal(applyMove(snap, { id: 10, x: 100, y: 80, w: 800, h: 600 }, [], 'logical'), null); // it did not move
-  assert.equal(applyMove(snap, { id: 99, x: 0, y: 0, w: 10, h: 10 }, [], 'logical'), null);      // not in the list
+  assert.equal(applyMove(snap, { id: 10, x: 100, y: 80, w: 800, h: 600 }, [], 'system'), null); // it did not move
+  assert.equal(applyMove(snap, { id: 99, x: 0, y: 0, w: 10, h: 10 }, [], 'system'), null);      // not in the list
 });

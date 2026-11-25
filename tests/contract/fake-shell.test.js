@@ -116,3 +116,16 @@ test('fake: start() is idempotent — ready is published once', async () => {
   await f.shell.stop();
   assert.deepEqual(seen, ['ready', 'stopped']);
 });
+
+test('fake: setWorkArea answers observe.workArea per display; null by default', async () => {
+  const f = createFakeShell();
+  await f.shell.start();
+  assert.equal(await f.shell.observe.workArea(1), null);
+  const rect = { x: 0, y: 32, w: 1920, h: 1048 };
+  f.setWorkArea((id) => (id === 2 ? rect : null));
+  assert.equal(await f.shell.observe.workArea(1), null);
+  assert.deepEqual(await f.shell.observe.workArea(2), rect);
+  f.setWorkArea(null);
+  assert.equal(await f.shell.observe.workArea(2), null);
+  await f.shell.stop();
+});

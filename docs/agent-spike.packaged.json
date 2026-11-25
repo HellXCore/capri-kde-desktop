@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-11-22T12:39:11.396Z",
+  "host": {
+    "electron": "44.10.1",
+    "node": "24.22.1",
+    "packaged": true,
+    "platform": "linux",
+    "arch": "x64",
+    "appPath": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar"
+  },
+  "runs": [
+    {
+      "launcher": "utility",
+      "entry": "asar",
+      "entryPath": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/probe.js",
+      "ok": true,
+      "readyMs": 93,
+      "rssMB": 107.47,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "utility",
+          "parentPort": true,
+          "pid": 101227
+        },
+        "entry": {
+          "ok": true,
+          "file": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/probe.js",
+          "bytes": 182
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/node_modules/koffi",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 5,
+          "names": 151,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/dbus-mini.js"
+        },
+        "rssMB": 107.47
+      },
+      "error": null,
+      "stderr": ""
+    },
+    {
+      "launcher": "fork",
+      "entry": "asar",
+      "entryPath": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/probe.js",
+      "ok": true,
+      "readyMs": 77,
+      "rssMB": 98.27,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "node",
+          "parentPort": false,
+          "pid": 101254
+        },
+        "entry": {
+          "ok": true,
+          "file": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/probe.js",
+          "bytes": 182
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/node_modules/koffi",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 5,
+          "names": 151,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar/dbus-mini.js"
+        },
+        "rssMB": 98.27
+      },
+      "error": null,
+      "stderr": ""
+    },
+    {
+      "launcher": "utility",
+      "entry": "unpacked",
+      "entryPath": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/probe-unpacked.js",
+      "ok": true,
+      "readyMs": 80,
+      "rssMB": 103.61,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "utility",
+          "parentPort": true,
+          "pid": 101263
+        },
+        "entry": {
+          "ok": true,
+          "file": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/probe-unpacked.js",
+          "bytes": 186
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/node_modules/koffi",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 6,
+          "names": 151,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/dbus-mini.js"
+        },
+        "rssMB": 103.61
+      },
+      "error": null,
+      "stderr": ""
+    },
+    {
+      "launcher": "fork",
+      "entry": "unpacked",
+      "entryPath": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/probe-unpacked.js",
+      "ok": true,
+      "readyMs": 77,
+      "rssMB": 97.81,
+      "exitCode": 0,
+      "probes": {
+        "runtime": {
+          "node": "24.22.1",
+          "electron": "44.10.1",
+          "type": "node",
+          "parentPort": false,
+          "pid": 101279
+        },
+        "entry": {
+          "ok": true,
+          "file": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/probe-unpacked.js",
+          "bytes": 186
+        },
+        "koffi": {
+          "ok": true,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/node_modules/koffi",
+          "version": "3.3.6"
+        },
+        "libx11": {
+          "ok": true
+        },
+        "bus": {
+          "ok": true,
+          "ms": 6,
+          "names": 151,
+          "path": "/tmp/capri-spike/app/dist/linux-unpacked/resources/app.asar.unpacked/dbus-mini.js"
+        },
+        "rssMB": 97.81
+      },
+      "error": null,
+      "stderr": ""
+    }
+  ],
+  "verdict": {
+    "utilityProcess": "suitable",
+    "fallback": null,
+    "reasons": [
+      "utilityProcess loads an entry inside app.asar"
+    ]
+  }
+}

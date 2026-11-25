@@ -9,8 +9,6 @@
 // the root's job.
 //
 // Transitional deviations from the port, which go away with this file:
-//   - observe.frames carries the renderer's legacy payload plus `self` (the compositor's confirmed
-//     place, for the overlay controller), not the typed WindowsFrame yet;
 //   - observe.pointer carries overlay-local coordinates from the compositor script, not global DIPs;
 //   - os.screenshot resolves the image the capture stack returns, not a Buffer: its consumers use it
 //     as it is, and encoding it here would be a behaviour change;
@@ -42,7 +40,7 @@ const sameRect = (a, b) => Boolean(a && b && a.x === b.x && a.y === b.y && a.w =
 function observable() {
   /** @type {Set<(value: any) => void>} */
   const subs = new Set();
-  /** @type {any} */ let last; // the channels carry the legacy payloads (see the header)
+  /** @type {any} */ let last; // frames carry WindowsFrame; pointer is still legacy-local (see the header)
   return {
     /** @param {(value: any) => void} fn */
     subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; },
@@ -94,7 +92,7 @@ function createLegacyShell({
   // What startAdapters() hands back; adapters.js is untyped, so its shape is said here.
   /** @type {{
    *   stop(): void, refresh(): void,
-   *   origin(): { x: number, y: number, width: number, height: number } | null,
+   *   frame(): import('../../core/ports').WindowsFrame | null,
    *   cursor(): { x: number, y: number } | null,
    *   focus(on: boolean): void, setZones(rects: any[]): void,
    *   methods(): { screenshot?: string[] },
@@ -110,7 +108,7 @@ function createLegacyShell({
   const health = observable();
   const frames = observable();
   const pointer = observable();
-  const facts = observable(); // nothing publishes here yet: devices still ride the frame
+  const facts = observable(); // devices (usb / plug), reported when they change
   const onHotkey = observable();
   health.publish({ state: 'idle' });
 
@@ -170,12 +168,11 @@ function createLegacyShell({
       onState,
       onCommand: (/** @type {string} */ name) => { if (name === 'toggle') fireStow(); },
       onPointer: (/** @type {any} */ p) => pointer.publish(p),
-      onUpdate: (/** @type {any} */ data) => {
-        const o = handle ? handle.origin() : null;
-        const self = o ? { x: o.x, y: o.y, w: o.width, h: o.height } : null;
-        frames.publish({ ...data, self }); // self: the controller's confirmed place, as before
-        resolveWaiters(self);
+      onFrame: (/** @type {import('../../core/ports').WindowsFrame} */ frame) => {
+        frames.publish(frame);
+        resolveWaiters(frame.self); // the controller's confirmed place
       },
+      onFact: (/** @type {import('../../core/ports').DevicesFact} */ fact) => facts.publish(fact),
     });
     if (!adapterShortcut) ensureStow();
     if (!caps.adapters().length) { state = 'ready'; health.publish({ state: 'ready' }); }
@@ -222,8 +219,7 @@ function createLegacyShell({
     overlay: {
       // Resolves with the confirmed place; the controller awaits it with a timeout of its own.
       request: request((/** @type {any} */ rect) => new Promise((resolve) => {
-        const o = handle?.origin();
-        const now = o && { x: o.x, y: o.y, w: o.width, h: o.height };
+        const now = handle?.frame()?.self ?? null;
         if (sameRect(now, rect)) return resolve(now);
         waiters.add({ rect, resolve });
       })),

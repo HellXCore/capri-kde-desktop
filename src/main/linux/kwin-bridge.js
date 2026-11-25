@@ -35,6 +35,7 @@ const x11 = require('./x11');
 const { Bus } = require('./dbus-mini');
 const { createDevices } = require('./devices');
 const { createGameWatcher } = require('./games');
+const { detectEnv } = require('../core/env');
 
 const BUS_NAME = 'org.capri.WindowBridge';
 const OBJECT_PATH = '/org/capri/WindowBridge';
@@ -53,12 +54,13 @@ const MAX_PIDS = 64;
 const ZONE_PAD = 48;
 const ZONE_STEP = 32;
 
-// KWin's logical pixels -> the X screen's pixels. 'logical' (default): the same thing, which is
-// right while XWayland is scaled by KWin (Plasma's default, "Legacy applications: scaled by the
-// system"). 'physical': the user let XWayland apps scale themselves, so X pixels are real ones;
-// each rectangle is multiplied by the scale of the output holding its centre.
-function toXPixels(rect, outputs, units) {
-  if (units !== 'physical') return rect;
+// KWin's logical pixels -> the X screen's pixels, for the XWayland strategy. 'system' (default):
+// KWin scales legacy X clients (Plasma's "Legacy applications: scaled by the system"), so its
+// logical pixels are the X screen's pixels. 'client': the clients scale themselves, X pixels are
+// physical ones; each rectangle is multiplied by the scale of the output holding its centre.
+// On native Wayland there is no X screen: 'system' keeps the logical pixels, which are DIPs.
+function toXPixels(rect, outputs, xwaylandScale) {
+  if (xwaylandScale !== 'client') return rect;
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   const out = list(outputs).find((o) => cx >= o.x && cx < o.x + o.w && cy >= o.y && cy < o.y + o.h);
@@ -68,7 +70,7 @@ function toXPixels(rect, outputs, units) {
 
 // What the KWin script sent -> the snapshot in the Windows helper's format. The message comes off
 // the session bus, so its shape is checked rather than trusted.
-function fromPayload(payload, { units = 'logical' } = {}) {
+function fromPayload(payload, { xwaylandScale = 'system' } = {}) {
   if (!payload || typeof payload !== 'object' || payload.v !== 1) throw new Error('unknown payload');
   const r = payload.root || {};
   const root = {
@@ -95,7 +97,7 @@ function fromPayload(payload, { units = 'logical' } = {}) {
   for (const [key, v] of Object.entries(payload.rects || {})) {
     const id = Number(key);
     if (!isNum(id) || !v || ![v.x, v.y, v.w, v.h].every(isNum)) continue;
-    rects.set(id, toXPixels({ x: v.x, y: v.y, w: v.w, h: v.h }, payload.outputs, units));
+    rects.set(id, toXPixels({ x: v.x, y: v.y, w: v.w, h: v.h }, payload.outputs, xwaylandScale));
   }
 
   const snap = x11.buildSnapshot({ root, infos, rects, self: {} });
@@ -149,10 +151,10 @@ function parseMove(text) {
 
 // The snapshot with one window's rectangle replaced; null if there is nothing to change (the window
 // is not in the last snapshot, or it did not move).
-function applyMove(snap, mv, outputs, units) {
+function applyMove(snap, mv, outputs, xwaylandScale) {
   const i = snap.wins.findIndex((w) => w.id === mv.id);
   if (i < 0) return null;
-  const r = toXPixels({ x: mv.x, y: mv.y, w: mv.w, h: mv.h }, outputs, units);
+  const r = toXPixels({ x: mv.x, y: mv.y, w: mv.w, h: mv.h }, outputs, xwaylandScale);
   const old = snap.wins[i];
   if (old.x === r.x && old.y === r.y && old.w === r.w && old.h === r.h) return null;
   const wins = snap.wins.slice();
@@ -193,19 +195,22 @@ function writeScript(scriptDir, source = path.join(__dirname, 'kwin-windows.qml'
 
 // session: capabilities.linuxSession(). getSelf(): { pid, title } of the overlay (its pid and the
 // window title it was given), to leave it out. scriptDir: a writable real directory.
-// Same contract as startX11Watch: onSnapshot(snap) physical-pixel snapshots, onState(ok).
+// Same contract as startX11Watch: onSnapshot(snap) in the watcher's pixels (the X screen's
+// through XWayland, DIPs natively), onState(ok).
 function startKWinWatch({
   session, getSelf = () => ({}), scriptDir, onSnapshot, onState = () => {}, onCommand = () => {}, onPointer = () => {},
   // what reads /sys and /proc (the tests give their own): watchDevices(onChange) -> the watcher
   watchDevices = (onChange) => createDevices({ onChange }), gameOf = createGameWatcher(),
-  units = process.env.CAPRI_KWIN_UNITS === 'physical' ? 'physical' : 'logical',
+  xwaylandScale = 'system', // 'system' | 'client': how XWayland clients are scaled; the adapter decides
   // the entire "handshake" process with KWin is tested without a graphical shell
   // (a custom implementation is used in tests/kwin-bridge-load.test.js)
   connect = () => Bus.connect(), firstUpdateMs = FIRST_UPDATE_MS,
   log = console,
 }) {
   const noop = { stop() {} };
-  const kde = /KDE/i.test(process.env.XDG_CURRENT_DESKTOP || '');
+  // Defensive guard: the mode has already decided this may run. Only the desktop fact is needed
+  // here; the environment itself is read in core/env.js.
+  const kde = detectEnv({ env: process.env, ozone: null, electronMajor: 0 }).desktop === 'kde';
   // 'xwayland': Capri itself runs through XWayland inside the Wayland session; 'wayland': natively
   if (!['wayland', 'xwayland'].includes(session) || !kde) {
     log.log(`[capri] kwin watch: off (needs a KDE Wayland session, this is ${kde ? 'KDE' : 'not KDE'} / ${session || 'no session'})`);
@@ -249,7 +254,7 @@ function startKWinWatch({
     pendingMove = null;
     lastMoveAt = Date.now();
     if (!mv || !lastSnap) return;
-    const next = applyMove(lastSnap, mv, outputs, units);
+    const next = applyMove(lastSnap, mv, outputs, xwaylandScale);
     if (!next) return;
     lastSnap = next; // so a device change in between does not bring the old place back
     emit(next);
@@ -280,7 +285,7 @@ function startKWinWatch({
   const update = (text) => {
     try {
       const payload = JSON.parse(text);
-      const snap = fromPayload(payload, { units });
+      const snap = fromPayload(payload, { xwaylandScale });
       // the game in front: only the name of its folder in a launcher's library is passed on
       const front = payload.front || {};
       snap.game = gameOf(isNum(front.pid) ? front.pid : 0, typeof front.cls === 'string' ? front.cls : '');
@@ -320,7 +325,7 @@ function startKWinWatch({
     const self = getSelf() || {};
     const reply = { selfPid: self.pid || 0, selfTitle: self.title || '' };
     if (zones) reply.zone = zones;
-    if (units !== 'physical' && isRect(self.rect)) reply.selfRect = self.rect;
+    if (xwaylandScale !== 'client' && isRect(self.rect)) reply.selfRect = self.rect;
     if (process.env.CAPRI_TRACE_KWIN === '1') reply.trace = true; // the script writes what it does with the focus
     // to tell which of what the script does to other windows is behind a problem (debugging only):
     if (process.env.CAPRI_KWIN_NO_GIVEBACK === '1') reply.noGiveBack = true; // it never activates a window
@@ -451,10 +456,11 @@ function startKWinWatch({
     },
     // the windows with a window open, for the list of apps: [{ id, pid, cls, app, types, state }]
     windows: () => windows.slice(),
-    // where the pointer is, in the X screen's pixels ({ x, y }), or null until KWin has said
+    // where the pointer is, in the watcher's pixels (the X screen's through XWayland, DIPs
+    // natively), or null until KWin has said
     cursor() {
       if (!cursor) return null;
-      const p = toXPixels({ x: cursor.x, y: cursor.y, w: 0, h: 0 }, outputs, units);
+      const p = toXPixels({ x: cursor.x, y: cursor.y, w: 0, h: 0 }, outputs, xwaylandScale);
       return { x: p.x, y: p.y };
     },
     // asks KWin to close the windows of these processes, as their close button would

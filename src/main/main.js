@@ -19,10 +19,13 @@ const adapters = require('./adapters');
 const { watchPower } = require('./power');
 const inputRegion = require('./linux/input-region');
 const { createLegacyShell } = require('./platform/shell/legacy-shell');
+const { createWorkArea, overlayAreaFor } = require('./platform/shell/work-area');
+const { toRendererPayload } = require('./platform/shell/frames');
 const { createOverlayController } = require('./app/overlay-window');
 const { createInputRegion: createXShape } = require('./linux/x11-input');
 const { availability, rendererCaps } = require('./core/availability');
-const { createCapabilities, ozonePlatform } = require('./capabilities');
+const { createCapabilities } = require('./capabilities');
+const { detectEnv, ozonePlatform } = require('./core/env');
 const { createSettingsWindow } = require('./settings-window');
 const { settingsView } = require('./settings-view');
 const { startUpdates, isReleasePage } = require('./updates');
@@ -41,10 +44,12 @@ const demoSteps = require('../../scripts/demo-sequence');
 
 // What works on this computer (capabilities.js): the menu, the overlay and the IPC below go by it
 const ozone = ozonePlatform(app); // the --ozone-platform flag Electron was started with, if any
+const electronMajor = Number(String(process.versions.electron || '').split('.')[0]) || 0;
+const envFacts = detectEnv({ env: process.env, ozone, electronMajor }); // the environment, read once in core/env.js
 const caps = createCapabilities({ ozone }); // the session follows what Electron runs on
 // Startup facts and the intersection's name, for the log only
 console.log(`[capri] display: ${caps.signature} (server=${caps.facts.server}, desktop=${caps.facts.desktop}, Electron ${process.versions.electron}, --ozone-platform=${ozone || 'not given'}, `
-  + `XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || '-'}, WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY || '-'}, DISPLAY=${process.env.DISPLAY || '-'})`);
+  + `env: server=${envFacts.server}, desktop=${envFacts.desktop}, plasma=${envFacts.plasma ?? '-'}, DISPLAY=${process.env.DISPLAY || '-'})`);
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
 const SMOKE = process.argv.includes('--smoke-test');
@@ -68,6 +73,7 @@ protocol.registerSchemesAsPrivileged([
 let overlay = null;
 let overlayCtl = null;  // owns the overlay window: place, stacking, keyboard, input (app/overlay-window.js)
 let desktopShell = null;       // LegacyShell: the DesktopShell port over the adapters (platform/shell/legacy-shell.js)
+let workAreas = null;   // the port's work areas per display (platform/shell/work-area.js)
 let tray = null;
 let trayMenu = null; // Also what she opens when you right-click her
 let settings = null; // Capri settings window (settings-window.js), made in main()
@@ -77,7 +83,9 @@ let updateSaid = null; // The version she has mentioned (once)
 let demoTimer = null;
 let powerWatch = null; // Screen locked / asleep (power.js): her overlay pauses its decorative work
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
-let lastWindows = null;
+let lastFrame = null;   // the shell's last WindowsFrame (global DIPs, with its revision)
+let lastDevices = { usb: [], plug: null }; // the last devices fact, merged into the renderer payload
+let lastWindows = null; // the renderer payload last sent (windows:get answers with it)
 let chatModels = null; // the provider's models, as last seen (null: not reached)
 let chatError = null;  // why not, when the provider said
 let chatErrorCode = null; // 'nokey' or 'nourl': what her setup should ask for
@@ -171,14 +179,24 @@ function moveOverlay(id) {
 }
 
 // Capri window: the work area, or the whole screen while she rests on the taskbar (her legs hang
-// over it), less its top row of pixels: a window on top covering the whole screen is a fullscreen
-// app to Windows (animated wallpapers pause, notifications wait). `gap`: how much of her window is
-// below the top of the taskbar (0, or its height).
+// over it). The work area is the platform's when the port knows one — panels on native Wayland are
+// invisible to Chromium — and Electron's own otherwise; the computation lives in work-area.js.
+// `gap`: how much of her window hangs below the work area's bottom (0, or the panel's height).
 function overlayArea() {
-  const { workArea, bounds } = targetDisplay();
-  const area = config.load().rest === 'taskbar' ? { ...bounds, y: bounds.y + 1, height: bounds.height - 1 } : workArea;
-  return { area, gap: area.y + area.height - (workArea.y + workArea.height) };
+  const display = targetDisplay();
+  return overlayAreaFor(display, config.load().rest, workAreas?.get(display.id) ?? null);
 }
+
+// Ask the port for the work areas again (the shell is up, or the displays changed). A new answer
+// refits her window and re-projects the frame; no answer changes nothing.
+const refreshWorkAreas = () => {
+  if (!workAreas) return;
+  workAreas.refresh(displays().map((d) => d.id)).then((changed) => {
+    if (!changed) return;
+    overlayCtl?.fit();
+    desktopShell?.refresh();
+  }).catch(() => {}); // intentional: a refit must never become an unhandled rejection
+};
 
 const clock = { now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h) };
 
@@ -210,6 +228,7 @@ function createOverlay() {
       isRegistered: (accel) => globalShortcut.isRegistered(accel),
     },
   }));
+  workAreas = createWorkArea({ shell: desktopShell });
   overlayCtl = createOverlayController({
     BrowserWindow, shell: desktopShell, clock, log: console, nativeTheme,
     input: { xshape: createXShape, mode: desktopShell.inputKind() },
@@ -1403,16 +1422,32 @@ function main() {
     desktopShell.health.subscribe((h) => { if (h.state !== 'stopped') broadcastConfig(); });
     // The shell owns the adapters, the input policy and Ctrl+Alt+C; main only reacts to what it says.
     desktopShell.control.onHotkey.subscribe((id) => { if (id === 'stow') toggleVisible(); });
-    desktopShell.observe.frames.subscribe((data) => {
-      if (data.taskbar && !lastWindows?.taskbar && config.load().rest === 'taskbar') overlayCtl?.raise();
-      lastWindows = data;
-      overlay?.webContents.send('windows:update', data);
+    // The renderer's picture is a projection of the last frame: local coordinates from the
+    // overlay's confirmed place, devices merged in. A new revision is a new desktop; the same
+    // revision said again (refresh) is the overlay having moved — re-project, do not re-read.
+    const sendWindows = () => {
+      if (!lastFrame || !overlay || overlay.isDestroyed()) return;
+      lastWindows = toRendererPayload(lastFrame, overlayCtl.bounds(), lastDevices);
+      overlay.webContents.send('windows:update', lastWindows);
+    };
+    desktopShell.observe.facts.subscribe((fact) => {
+      if (fact?.kind !== 'devices') return;
+      lastDevices = { usb: fact.usb, plug: fact.plug };
+      sendWindows();
+    });
+    desktopShell.observe.frames.subscribe((frame) => {
+      if (lastFrame && frame.rev < lastFrame.rev) return; // a stale revision: nothing to learn
+      const dockCame = frame.dock && !lastFrame?.dock;
+      lastFrame = frame;
+      if (dockCame && config.load().rest === 'taskbar') overlayCtl?.raise();
+      sendWindows();
     });
     desktopShell.health.subscribe((h) => {
       if (h.state !== 'ready') return;
+      refreshWorkAreas(); // the platform may know the work area better once it is up
       // Native Wayland: her window takes the mouse only while the pointer is said to be over her;
       // if it never is, nothing reaches her, and the log says why that may be.
-      if (shell.caps().overlay.focus === 'compositor' && overlayCtl?.inputKind() === 'toggle') {
+      if (desktopShell.caps().overlay.focus === 'compositor' && overlayCtl?.inputKind() === 'toggle') {
         setTimeout(() => {
           const s = overlayCtl?.inputStats();
           if (s && s.pointers === 0) {
@@ -1438,6 +1473,7 @@ function main() {
       desktopShell?.refresh();
       rebuildTray();
       sendCommand('screens');
+      refreshWorkAreas(); // the panels may sit differently on the new arrangement
     };
     screen.on('display-metrics-changed', screensChanged);
     screen.on('display-added', screensChanged);

@@ -1,5 +1,7 @@
 'use strict';
 
+const { detectEnv, ozonePlatform } = require('./core/env');
+
 // Deprecated: the transitional capability matrix, kept for the legacy shell only. Its feature API
 // (all/has/set/onChange/forRenderer) is consumed by platform/shell/legacy-shell.js and the adapters
 // it drives; everything else asks core/availability.js over the DesktopShell port. The composition
@@ -21,11 +23,6 @@ const FEATURES = [
   'ollamaInstall',  // installing Ollama with no terminal (no such path on Linux: see setup.js)
   'ollamaLaunch',   // Claude Code or Codex through Ollama, in a terminal window of its own
 ];
-
-// Which display server Electron runs on, and whether this is KDE. Decided once at startup: a
-// different mode means a restart with another --ozone-platform. Nothing outside this file guesses
-// at the environment.
-const KDE = /KDE/i;
 
 // The servers Electron can run on here. 'none': no display at all.
 const SERVERS = ['wayland', 'xwayland', 'x11', 'none'];
@@ -139,33 +136,14 @@ const RENDERER_ALIASES = {
 // without process.versions.electron is a test or a script.
 const isDev = (proc = process) => proc.argv.includes('--dev') || proc.defaultApp === true || !proc.versions?.electron;
 
-// What Electron itself runs on here: 'x11' (a real X11 session, or XWayland), 'wayland' (native),
-// or null when the flag was not given ("auto" or nothing). There is no all that asks Electron.
-// So this reads the --ozone-platform flag it was started with. Neither is the display server  
-// the desktop runs: a Wayland desktop with Electron on x11 is XWayland.
-function ozonePlatform(app) {
-  try {
-    const asked = app?.commandLine?.getSwitchValue?.('ozone-platform');
-    if (asked === 'x11' || asked === 'wayland') return asked;
-  } catch {
-    // no such thing yet: not known
-  }
-  return null;
-}
-
 // The session on Linux: 'x11' (Electron on a real X11 desktop), 'xwayland' (Electron on x11 in 
 // a Wayland desktop, partial functionality), 'wayland' (Electron native), or null (no display).
 // Native Wayland windows are out of reach of X11 calls, so the use of an external adapter.
 // Electron does by itself, which is native Wayland in a Wayland desktop from version 38 on
 // (its --ozone-platform default is "auto"), x11 before.
 function linuxSession(env = {}, ozone = null, electronMajor = Number(String(process.versions.electron || '').split('.')[0]) || 0) {
-  const waylandDesktop = env.XDG_SESSION_TYPE === 'wayland' || Boolean(env.WAYLAND_DISPLAY);
-  // an X11 desktop (Electron asked for wayland there falls back to x11 by itself)
-  if (!waylandDesktop) return env.DISPLAY || env.XDG_SESSION_TYPE === 'x11' ? 'x11' : null;
-  // a Wayland desktop: Electron is native on it, or an X11 client of XWayland
-  if (ozone) return ozone === 'wayland' ? 'wayland' : 'xwayland';
-  if (electronMajor >= 38) return 'wayland';
-  return env.DISPLAY ? 'xwayland' : 'wayland';
+  const server = detectEnv({ env, ozone, electronMajor }).server;
+  return server === 'none' ? null : server;
 }
 
 // What works here before anything has started: the facts' own features, with the adapter ones
@@ -173,9 +151,11 @@ function linuxSession(env = {}, ozone = null, electronMajor = Number(String(proc
 // line is what counts, a hint it may have ignored is not.
 function detect({ platform = process.platform, env = process.env, ozone = null, dev = isDev(), log = console } = {}) {
   const linux = platform === 'linux';
-  const session = linuxSession(env, ozone);
-  const kde = KDE.test(env.XDG_CURRENT_DESKTOP || '');
-  const detected = { server: session || 'none', desktop: kde ? 'kde' : 'other' };
+  const electronMajor = Number(String(process.versions.electron || '').split('.')[0]) || 0;
+  const envFacts = detectEnv({ env, ozone, electronMajor });
+  const session = envFacts.server === 'none' ? null : envFacts.server;
+  const kde = envFacts.desktop === 'kde';
+  const detected = { server: envFacts.server, desktop: envFacts.desktop };
   const asked = env.CAPRI_FORCE_MODE;
   const forced = linux && dev ? forcedFacts(asked) : null;
   if (asked && !forced) log.warn?.(`[capri] CAPRI_FORCE_MODE=${asked} ignored (unknown mode, or not a dev run)`);
